@@ -4,6 +4,8 @@
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
 
+> **Build progress (this session):** Phases 0–3 and most of 4–5 are implemented and verified — **36 Pest tests green**, `tsc --noEmit` clean, `npm run build` succeeds, app boots (welcome/login 200, guarded routes redirect), DB seeded (3 polls, 200 demo voters, real vote rows). Laravel 12 + Inertia v2 + React 19 + Reverb scaffolded via the React starter kit. Remaining: magic-link voting (D2), the voter audit page + settings, Forge deploy (Phase 6), and CI wiring. Code lives on branch `feat/laravel-scaffold` (uncommitted).
+
 ---
 
 ## Phase −1 · Repo cleanup ✅ (done)
@@ -19,7 +21,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
 
 ---
 
-## Phase 0 · Scaffold `[infra]` — spec: [`02-architecture.md`](02-architecture.md)
+## Phase 0 · Scaffold ✅ done `[infra]` — spec: [`02-architecture.md`](02-architecture.md)
 
 Strategy: **fresh Laravel skeleton on a branch, then port** — never install Laravel over the existing root (risk R4).
 
@@ -38,7 +40,7 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 
 ---
 
-## Phase 1 · Data & Auth `[new]` — spec: [`03-database.md`](03-database.md), [`06-auth-and-roles.md`](06-auth-and-roles.md)
+## Phase 1 · Data & Auth ✅ mostly done (magic-link pending) `[new]` — spec: [`03-database.md`](03-database.md), [`06-auth-and-roles.md`](06-auth-and-roles.md)
 
 - [ ] Enums: `UserRole`, `PollStatus` (+ mirror TS unions in `resources/js/types/models.ts`)
 - [ ] Migrations (in FK order): `users` (+`role`, `avatar_*`, **`is_demo`** R3/M1), `polls`, `poll_options`, `votes` (with `UNIQUE(poll_id, poll_option_id, user_id)`)
@@ -54,7 +56,7 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 
 ---
 
-## Phase 2 · Poll Management `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md)
+## Phase 2 · Poll Management ✅ done `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md)
 
 - [ ] `StorePollRequest` (2–10 options; duration in {45,90,120,180})
 - [ ] `PollPolicy` (`create`/`update`/`launch`/`delete`/`control`)
@@ -68,7 +70,7 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 
 ---
 
-## Phase 3 · Voting `[new]` — spec: [`modules/voting.md`](modules/voting.md)
+## Phase 3 · Voting ✅ done `[new]` — spec: [`modules/voting.md`](modules/voting.md)
 
 - [ ] `StoreVoteRequest` + `VotePolicy::cast` (active poll; not already voted per rules)
 - [ ] `VoteService::cast` with **atomic `Cache::lock` per user+poll** (fixes single-choice race, risk R2)
@@ -79,7 +81,7 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 
 ---
 
-## Phase 4 · Real-time `[new]` — spec: [`07-realtime.md`](07-realtime.md)
+## Phase 4 · Real-time ✅ implemented (needs live Reverb load test) `[new]` — spec: [`07-realtime.md`](07-realtime.md)
 
 - [ ] `php artisan reverb:start` running; channel auth in `routes/channels.php`
 - [ ] Events: `VoteCast` (tally only) + `VoterTicked` (per-vote) + `PollStatusChanged`
@@ -92,7 +94,7 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 
 ---
 
-## Phase 5 · Dashboard, Admin & Analytics `[new]` — spec: [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md), [`modules/admin-controls.md`](modules/admin-controls.md)
+## Phase 5 · Dashboard, Admin & Analytics 🔶 partial (controls + dashboard done; voter audit page + settings pending) `[new]` — spec: [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md), [`modules/admin-controls.md`](modules/admin-controls.md)
 
 - [ ] Metrics service: `totalVoters`, `velocityPerMinute`, `engagementRate` (**decide denominator** — open item)
 - [ ] `DashboardController` (role-aware: creator overview / admin Showrunner panel)
@@ -104,6 +106,52 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 - [ ] **Exit:** metrics are real (not random); controls work live for admins only; expired polls auto-flip to results; no `alert()` remains
 
 ---
+
+## Phase 5b · QR voting & deadline polls ✅ implemented `[new]` — spec: [`modules/qr-voting.md`](modules/qr-voting.md), [`modules/poll-management.md`](modules/poll-management.md)
+
+**QR scan-to-vote**
+- [x] Add `qrcode.react` dependency
+- [x] Public, rate-limited `GET /polls/{poll}/join` route + `PollController@join` (authed → show; guest → `redirect()->guest()` → login → back to show)
+- [x] `components/showdown/qr-panel.tsx` rendering `<QRCodeSVG>` of the absolute `polls.join` URL + copy-link
+- [x] QR ("Scan to vote") button on the poll/show page opens the panel (ports the prototype's QR button) · _dashboard placement optional, TODO_
+- [ ] (Later, D2) signed magic-link join variant skips the password step without changing the QR component
+
+**Deadline polls (end_mode)**
+- [x] Migration: `end_mode` enum (`duration`|`deadline`), `duration_seconds` nullable, `deadline_at` timestamp
+- [x] `Poll` casts `deadline_at` datetime; `PollService::launch`/`restart` resolve `ends_at` from end mode
+- [x] `StorePollRequest`: `end_mode` required; `duration_seconds` required_if duration; `deadline_at` required_if deadline + `after:now`
+- [x] Create form: toggle between "Countdown" and "Deadline date/time"
+- [x] **Exit:** verified by Pest — deadline poll launches with `ends_at = deadline_at` (D7), past deadline rejected, countdown unchanged; live timer/auto-end/broadcasts read `ends_at` unchanged
+
+> Tests: `php artisan test` → **40 passed**. `tsc` clean, `npm run build` succeeds. ⚠️ Dev MySQL reseed pending — start Laragon MySQL then run `php artisan migrate:fresh --seed` to pick up the new poll columns.
+
+## Phase 5c · Public sharing & guest voting ✅ implemented `[new]` — spec: [`modules/public-sharing.md`](modules/public-sharing.md)
+
+- [x] Migration: `users.is_guest` boolean (claimable email-only accounts, D8)
+- [x] `PublicPollController@show` + `@vote` + `@results`; public rate-limited routes `GET /p/{poll}`, `POST /p/{poll}/vote`, `GET /r/{poll}`
+- [x] `StoreGuestVoteRequest` (`poll_option_id`, `email`, optional `name`); resolve/create `is_guest` invitee by email, then reuse `VoteService::cast` (R2 lock holds)
+- [x] `layouts/guest-layout.tsx` (no sidebar) + `pages/public-poll.tsx` (ports `InviteeView`: email + vote, leaderboard) with **polling** liveness
+- [x] `voted_poll_{id}` cookie so returning guests see "already voted"
+- [x] Inline `qr-share.tsx` (not modal); QR encodes the vote URL; shown on backend page side + both guest pages
+- [x] Results-only spectator page `pages/public-results.tsx` (`/r/{poll}`) with a QR linking to the vote page
+- [ ] **Exit (pending live check):** logged-out visitor views & votes on `/p/{poll}` (no sidebar, no login); claimable account created; dedupe holds; rate-limited — needs Laragon MySQL up + feature tests
+
+## Phase 5d · Optional poll password `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D9)
+
+- [ ] Migration: `polls.access_password` nullable (hashed)
+- [ ] Create form: optional password field (blank = open)
+- [ ] `POST /polls/{poll}/unlock` verifies password → session flag / signed `poll_unlocked_{id}` cookie; gate enforced server-side before `VoteService::cast` on both authed and public vote paths
+- [ ] Vote UI shows a password gate when locked and not yet unlocked; **no gate when `access_password` is null**
+- [ ] **Exit:** password-protected poll blocks voting until correct password; open poll votes anytime
+
+## Phase 5e · Option images / icons `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D10)
+
+- [ ] Migration: `poll_options.image_path` + `icon` nullable
+- [ ] `php artisan storage:link`; store uploads on the `public` disk
+- [ ] `StorePollRequest`: `options.*.image` (`nullable|image|max:2048`), `options.*.icon` (`nullable|string`)
+- [ ] `PollService::create` saves uploaded images, sets `image_path`; `PollPresenter` exposes `imageUrl`/`icon`
+- [ ] Create form: per-option image upload (Inertia `forceFormData`); option cards render the image/icon in place of the number badge (create + show + public page)
+- [ ] **Exit:** an option with an uploaded image shows that image everywhere the poll renders
 
 ## Phase 6 · Hardening & Deploy `[infra]` — spec: [`08-delivery-plan.md`](08-delivery-plan.md)
 

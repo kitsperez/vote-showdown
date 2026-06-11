@@ -4,7 +4,13 @@
 
 ## Responsibility
 
-Everything about a poll's existence and lifecycle: a **creator** builds a poll (title, description, 2–10 options, single/multiple, duration) and **launches** it; the poll moves `draft → active → ended`. Ports the prototype's `PollCreatorView` and the `handleLaunchPoll` logic.
+Everything about a poll's existence and lifecycle: a **creator** builds a poll (title, description, 2–10 options, single/multiple, and an **end mode**) and **launches** it; the poll moves `draft → active → ended`. Ports the prototype's `PollCreatorView` and the `handleLaunchPoll` logic.
+
+> **End mode (countdown or deadline).** A poll ends either after a relative **countdown** (`duration_seconds`) or at an absolute **deadline date/time** (`deadline_at`) the creator picks. Both resolve into the single authoritative `ends_at` (see [`../03-database.md`](../03-database.md)), so the live timer, auto-end sweeper, and broadcasts work unchanged either way. The create form offers a toggle between "Countdown" and "Deadline date".
+>
+> **Optional access password (D9).** A creator may set a password that voters must enter once before voting; `polls.access_password` is stored **hashed**. If unset (null), the poll is open and anyone may vote anytime. Verification is via `POST /polls/{poll}/unlock` (or supplied alongside the first vote); on success a session flag / signed cookie `poll_unlocked_{id}` remembers it so the prompt isn't shown again. Applies on both the authed vote screen and the public guest page ([public-sharing.md](public-sharing.md)).
+>
+> **Option images / icons (D10).** Each option may carry an **uploaded image** (`image_path`, stored on the public disk) or a **named lucide icon** (`icon`). When present it renders on the option card in place of the number badge. Image upload uses Inertia's multipart `useForm` (`forceFormData`); validate as `image|max:2048`. `PollPresenter` exposes `imageUrl`/`icon` per option.
 
 > **Scope (decision D1, [`../08-delivery-plan.md`](../08-delivery-plan.md)): polls are per-creator.** Each creator may have **at most one active poll of their own**; launching does *not* affect other creators' polls. Admins can moderate/control any poll via `PollPolicy@control`, but there is no single global "stage."
 
@@ -69,7 +75,8 @@ public function create(User $creator, array $data): Poll {
 ## Acceptance criteria
 
 - [ ] Creator can create a draft with 2–10 options; <2 or >10 rejected server-side.
-- [ ] Launching a poll sets `ends_at = now + duration_seconds` and ends only the **same creator's** other active poll (another creator's active poll is untouched).
+- [ ] Launching a **countdown** poll sets `ends_at = now + duration_seconds`; launching a **deadline** poll sets `ends_at = deadline_at`. Either way it ends only the **same creator's** other active poll (another creator's active poll is untouched).
+- [ ] Deadline must be in the future (`after:now`); a deadline already in the past is rejected.
 - [ ] Only the owning creator (or an admin) can edit/delete/launch a poll; others get 403.
 - [ ] `PollStatusChanged` broadcasts on launch/close/restart (verified by a connected client flipping views).
 - [ ] Option colors/badges round-trip (brutalist look preserved).

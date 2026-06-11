@@ -30,7 +30,7 @@ These are the cross-boundary contract — mirror them as TS unions in `resources
 // app/Models/Poll.php
 class Poll extends Model
 {
-    protected $fillable = ['creator_id','title','description','allow_multiple','status','duration_seconds','starts_at','ends_at'];
+    protected $fillable = ['creator_id','title','description','allow_multiple','status','end_mode','duration_seconds','deadline_at','starts_at','ends_at'];
     protected $casts = [
         'allow_multiple' => 'boolean',
         'status' => PollStatus::class,
@@ -90,7 +90,10 @@ public function rules(): array {
         'title' => ['required','string','max:160'],
         'description' => ['nullable','string','max:500'],
         'allow_multiple' => ['boolean'],
-        'duration_seconds' => ['required','integer','in:45,90,120,180'],
+        // End mode: countdown OR absolute deadline date/time.
+        'end_mode' => ['required','in:duration,deadline'],
+        'duration_seconds' => ['required_if:end_mode,duration','nullable','integer','in:45,90,120,180'],
+        'deadline_at' => ['required_if:end_mode,deadline','nullable','date','after:now'],
         'options' => ['required','array','min:2','max:10'],
         'options.*.label' => ['required','string','max:120'],
         'options.*.color_class' => ['nullable','string','max:60'],
@@ -139,7 +142,7 @@ Domain logic lives here; controllers and events depend on these.
 // app/Services/PollService.php
 class PollService {
     public function create(User $creator, array $data): Poll;            // poll + options in a transaction
-    public function launch(Poll $poll): Poll;                            // status=Active, starts_at=now, ends_at=now+duration; ends the SAME creator's other active poll only (decision D1); fires PollStatusChanged
+    public function launch(Poll $poll): Poll;                            // status=Active, starts_at=now; resolves ends_at by end_mode (now+duration_seconds, OR the fixed deadline_at); ends the SAME creator's other active poll only (decision D1); fires PollStatusChanged
     public function close(Poll $poll): Poll;                             // status=Ended, ends_at=now; fires PollStatusChanged
     public function addSeconds(Poll $poll, int $seconds): Poll;          // ends_at += seconds; re-broadcast timer
     public function restart(Poll $poll): Poll;                           // delete votes, status=Active, new ends_at; fires PollStatusChanged

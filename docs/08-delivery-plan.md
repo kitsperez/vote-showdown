@@ -11,6 +11,11 @@
 | D3 | Real-time | Laravel Reverb + Echo | Always-on WS + queue + scheduler processes required |
 | D4 | Production | **Laravel Forge + VPS** | Supervisor-managed Reverb/queue/scheduler; deploy pipeline via Forge |
 | D5 | Design | Cartoony Neo-Brutalism sourced from frozen `src/` | See [`design-reference.md`](design-reference.md) |
+| D6 | QR scan-to-vote | One QR per poll encodes a public `polls.join` URL; auth happens behind it | New entry point for live audiences — [`modules/qr-voting.md`](modules/qr-voting.md) |
+| D7 | Poll end mode | Polls end by **countdown** (`duration_seconds`) **or** an absolute **deadline date** (`deadline_at`); both resolve to `ends_at` | [`modules/poll-management.md`](modules/poll-management.md), [`03-database.md`](03-database.md) |
+| D8 | Public sharing & guest voting | Every poll has a public **shareable link** → sidebar-less **guest page**, viewable with **no login**. Guests **vote by email**; first vote creates a claimable `is_guest` account (one identity = one vote). QR + share target this page. Resolves the D2 magic-link/account-model open items. | [`modules/public-sharing.md`](modules/public-sharing.md) |
+| D9 | Optional poll password | A poll may set an **access password** required before voting; if none is set, voting proceeds anytime. Stored hashed (`polls.access_password`), verified once then remembered per session/cookie. | [`modules/poll-management.md`](modules/poll-management.md) |
+| D10 | Option images / icons | Each poll option may have an **uploaded image** (`image_path`) or a **named icon** (`icon`), shown on the option card in place of the number badge. | [`modules/poll-management.md`](modules/poll-management.md) |
 
 ## Open decisions (must close before the noted phase)
 
@@ -18,7 +23,7 @@
 |------|-----------|-------|
 | Engagement-rate denominator (eligible invitees vs configured target) | Phase 5 | Product |
 | New-signup default role policy (auto-invitee + manual elevation, or invite-only creators/admins) | Phase 1 | Product |
-| Magic-link account model (full user row vs claimable guest) | Phase 1/3 | Eng + Product |
+| ~~Magic-link account model (full user row vs claimable guest)~~ | ✅ Resolved by D8 — claimable `is_guest` user row keyed by email | — |
 | Tally-broadcast coalescing window (e.g. 250ms) tuning | Phase 4 | Eng |
 
 ## Work breakdown (epics → tickets)

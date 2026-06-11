@@ -84,6 +84,7 @@ Move under `resources/js/components/`, strip their data ownership, feed via prop
 - `AdminDashboard.tsx` → used by `pages/Dashboard.tsx` (admin); metrics now come from props/Echo, not the simulator. See [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md).
 - `ResultsTally.tsx` → used by `pages/Polls/Show.tsx`; tallies from props, updated by `usePollChannel`.
 - `components/Toast.tsx` `[new]` — renders `flash` shared prop, replacing every `alert()`.
+- `components/showdown/qr-panel.tsx` `[new]` — renders a scan-to-vote QR (via `qrcode.react`) encoding the absolute `polls.join` URL; opened from the poll/show header & dashboard QR button. Ports the prototype's header QR button. See [`modules/qr-voting.md`](modules/qr-voting.md). Add dependency `qrcode.react`.
 
 ## Hooks `[new]`
 
