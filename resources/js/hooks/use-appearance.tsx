@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react';
 
 export type Appearance = 'light' | 'dark' | 'system';
 
-const prefersDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-const applyTheme = (appearance: Appearance) => {
-    const isDark = appearance === 'dark' || (appearance === 'system' && prefersDark());
-
-    document.documentElement.classList.toggle('dark', isDark);
+const applyTheme = (_appearance: Appearance) => {
+    // Vote Showdown is a light-only cartoony Neo-Brutalist theme — never go dark.
+    document.documentElement.classList.remove('dark');
 };
 
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');

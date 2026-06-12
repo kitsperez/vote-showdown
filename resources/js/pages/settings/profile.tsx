@@ -1,23 +1,11 @@
-import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Transition } from '@headlessui/react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { FormEventHandler } from 'react';
 
 import DeleteUser from '@/components/delete-user';
-import HeadingSmall from '@/components/heading-small';
 import InputError from '@/components/input-error';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import AppLayout from '@/layouts/app-layout';
-import SettingsLayout from '@/layouts/settings/layout';
-
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Profile settings',
-        href: '/settings/profile',
-    },
-];
+import ShowdownLayout from '@/layouts/showdown-layout';
+import { type SharedData } from '@/types';
 
 export default function Profile({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string }) {
     const { auth } = usePage<SharedData>().props;
@@ -34,71 +22,88 @@ export default function Profile({ mustVerifyEmail, status }: { mustVerifyEmail: 
     };
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Profile settings" />
+        <ShowdownLayout title="Edit Profile" subtitle="Update your name and email address">
+            <Head title="Edit Profile" />
 
-            <SettingsLayout>
-                <div className="space-y-6">
-                    <HeadingSmall title="Profile information" description="Update your name and email address" />
+            <div className="flex flex-col gap-8 p-6 md:p-10">
+                <div className="flex flex-wrap items-center gap-3">
+                    <Link
+                        href={route('profile.edit')}
+                        className="rounded-xl border-[3px] border-[#1b1b1b] bg-[#00e3fd] px-4 py-2 font-mono text-xs font-bold uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                        Profile
+                    </Link>
+                    <Link
+                        href={route('password.edit')}
+                        className="rounded-xl border-[3px] border-[#1b1b1b] bg-white px-4 py-2 font-mono text-xs font-bold uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-none"
+                    >
+                        Password
+                    </Link>
+                </div>
 
-                    <form onSubmit={submit} className="space-y-6">
-                        <div className="grid gap-2">
-                            <Label htmlFor="name">Name</Label>
-
-                            <Input
+                <form onSubmit={submit} className="max-w-2xl rounded-2xl border-[3px] border-[#1b1b1b] bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:p-8">
+                    <div className="grid gap-6">
+                        <div>
+                            <label htmlFor="name" className="mb-2 block font-mono text-xs font-bold uppercase">
+                                Name
+                            </label>
+                            <input
                                 id="name"
-                                className="mt-1 block w-full"
                                 value={data.name}
                                 onChange={(e) => setData('name', e.target.value)}
                                 required
                                 autoComplete="name"
                                 placeholder="Full name"
+                                className="h-12 w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 font-bold focus:border-[#e4006c] focus:outline-none"
                             />
-
                             <InputError className="mt-2" message={errors.name} />
                         </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="email">Email address</Label>
-
-                            <Input
+                        <div>
+                            <label htmlFor="email" className="mb-2 block font-mono text-xs font-bold uppercase">
+                                Email address
+                            </label>
+                            <input
                                 id="email"
                                 type="email"
-                                className="mt-1 block w-full"
                                 value={data.email}
                                 onChange={(e) => setData('email', e.target.value)}
                                 required
                                 autoComplete="username"
                                 placeholder="Email address"
+                                className="h-12 w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 font-bold focus:border-[#e4006c] focus:outline-none"
                             />
-
                             <InputError className="mt-2" message={errors.email} />
                         </div>
 
                         {mustVerifyEmail && auth.user.email_verified_at === null && (
-                            <div>
-                                <p className="mt-2 text-sm text-neutral-800">
-                                    Your email address is unverified.
+                            <div className="rounded-xl border-[3px] border-[#1b1b1b] bg-[#ffe170] p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <p className="font-mono text-xs font-bold uppercase">Email not verified</p>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-medium text-zinc-700">Resend verification email?</p>
                                     <Link
                                         href={route('verification.send')}
                                         method="post"
                                         as="button"
-                                        className="rounded-md text-sm text-neutral-600 underline hover:text-neutral-900 focus:ring-2 focus:ring-offset-2 focus:outline-hidden"
+                                        className="font-mono text-xs font-black text-[#e4006c] uppercase underline"
                                     >
-                                        Click here to re-send the verification email.
+                                        Send link
                                     </Link>
-                                </p>
-
+                                </div>
                                 {status === 'verification-link-sent' && (
-                                    <div className="mt-2 text-sm font-medium text-green-600">
-                                        A new verification link has been sent to your email address.
-                                    </div>
+                                    <div className="mt-2 text-sm font-bold text-emerald-700">Verification link sent.</div>
                                 )}
                             </div>
                         )}
 
-                        <div className="flex items-center gap-4">
-                            <Button disabled={processing}>Save</Button>
+                        <div className="flex flex-wrap items-center gap-4">
+                            <button
+                                type="submit"
+                                disabled={processing}
+                                className="cursor-pointer rounded-xl border-[3px] border-[#1b1b1b] bg-[#e4006c] px-6 py-3 font-mono text-sm font-black uppercase text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5 active:translate-y-1 active:shadow-none disabled:opacity-50"
+                            >
+                                Save
+                            </button>
 
                             <Transition
                                 show={recentlySuccessful}
@@ -107,14 +112,16 @@ export default function Profile({ mustVerifyEmail, status }: { mustVerifyEmail: 
                                 leave="transition ease-in-out"
                                 leaveTo="opacity-0"
                             >
-                                <p className="text-sm text-neutral-600">Saved</p>
+                                <p className="font-mono text-xs font-bold text-emerald-700 uppercase">Saved</p>
                             </Transition>
                         </div>
-                    </form>
-                </div>
+                    </div>
+                </form>
 
-                <DeleteUser />
-            </SettingsLayout>
-        </AppLayout>
+                <div className="max-w-2xl">
+                    <DeleteUser />
+                </div>
+            </div>
+        </ShowdownLayout>
     );
 }

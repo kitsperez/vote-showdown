@@ -1,22 +1,9 @@
 import InputError from '@/components/input-error';
-import AppLayout from '@/layouts/app-layout';
-import SettingsLayout from '@/layouts/settings/layout';
-import { type BreadcrumbItem } from '@/types';
 import { Transition } from '@headlessui/react';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { FormEventHandler, useRef } from 'react';
 
-import HeadingSmall from '@/components/heading-small';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Password settings',
-        href: '/settings/password',
-    },
-];
+import ShowdownLayout from '@/layouts/showdown-layout';
 
 export default function Password() {
     const passwordInput = useRef<HTMLInputElement>(null);
@@ -49,66 +36,85 @@ export default function Password() {
     };
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Profile settings" />
+        <ShowdownLayout title="Change Password" subtitle="Use a long, random password to stay secure">
+            <Head title="Change Password" />
 
-            <SettingsLayout>
-                <div className="space-y-6">
-                    <HeadingSmall title="Update password" description="Ensure your account is using a long, random password to stay secure" />
+            <div className="flex flex-col gap-8 p-6 md:p-10">
+                <div className="flex flex-wrap items-center gap-3">
+                    <Link
+                        href={route('profile.edit')}
+                        className="rounded-xl border-[3px] border-[#1b1b1b] bg-white px-4 py-2 font-mono text-xs font-bold uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-none"
+                    >
+                        Profile
+                    </Link>
+                    <Link
+                        href={route('password.edit')}
+                        className="rounded-xl border-[3px] border-[#1b1b1b] bg-[#00e3fd] px-4 py-2 font-mono text-xs font-bold uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                        Password
+                    </Link>
+                </div>
 
-                    <form onSubmit={updatePassword} className="space-y-6">
-                        <div className="grid gap-2">
-                            <Label htmlFor="current_password">Current password</Label>
-
-                            <Input
+                <form onSubmit={updatePassword} className="max-w-2xl rounded-2xl border-[3px] border-[#1b1b1b] bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:p-8">
+                    <div className="grid gap-6">
+                        <div>
+                            <label htmlFor="current_password" className="mb-2 block font-mono text-xs font-bold uppercase">
+                                Current password
+                            </label>
+                            <input
                                 id="current_password"
                                 ref={currentPasswordInput}
                                 value={data.current_password}
                                 onChange={(e) => setData('current_password', e.target.value)}
                                 type="password"
-                                className="mt-1 block w-full"
                                 autoComplete="current-password"
                                 placeholder="Current password"
+                                className="h-12 w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 font-bold focus:border-[#e4006c] focus:outline-none"
                             />
-
-                            <InputError message={errors.current_password} />
+                            <InputError className="mt-2" message={errors.current_password} />
                         </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="password">New password</Label>
-
-                            <Input
+                        <div>
+                            <label htmlFor="password" className="mb-2 block font-mono text-xs font-bold uppercase">
+                                New password
+                            </label>
+                            <input
                                 id="password"
                                 ref={passwordInput}
                                 value={data.password}
                                 onChange={(e) => setData('password', e.target.value)}
                                 type="password"
-                                className="mt-1 block w-full"
                                 autoComplete="new-password"
                                 placeholder="New password"
+                                className="h-12 w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 font-bold focus:border-[#e4006c] focus:outline-none"
                             />
-
-                            <InputError message={errors.password} />
+                            <InputError className="mt-2" message={errors.password} />
                         </div>
 
-                        <div className="grid gap-2">
-                            <Label htmlFor="password_confirmation">Confirm password</Label>
-
-                            <Input
+                        <div>
+                            <label htmlFor="password_confirmation" className="mb-2 block font-mono text-xs font-bold uppercase">
+                                Confirm password
+                            </label>
+                            <input
                                 id="password_confirmation"
                                 value={data.password_confirmation}
                                 onChange={(e) => setData('password_confirmation', e.target.value)}
                                 type="password"
-                                className="mt-1 block w-full"
                                 autoComplete="new-password"
                                 placeholder="Confirm password"
+                                className="h-12 w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 font-bold focus:border-[#e4006c] focus:outline-none"
                             />
-
-                            <InputError message={errors.password_confirmation} />
+                            <InputError className="mt-2" message={errors.password_confirmation} />
                         </div>
 
-                        <div className="flex items-center gap-4">
-                            <Button disabled={processing}>Save password</Button>
+                        <div className="flex flex-wrap items-center gap-4">
+                            <button
+                                type="submit"
+                                disabled={processing}
+                                className="cursor-pointer rounded-xl border-[3px] border-[#1b1b1b] bg-[#e4006c] px-6 py-3 font-mono text-sm font-black uppercase text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5 active:translate-y-1 active:shadow-none disabled:opacity-50"
+                            >
+                                Save password
+                            </button>
 
                             <Transition
                                 show={recentlySuccessful}
@@ -117,12 +123,12 @@ export default function Password() {
                                 leave="transition ease-in-out"
                                 leaveTo="opacity-0"
                             >
-                                <p className="text-sm text-neutral-600">Saved</p>
+                                <p className="font-mono text-xs font-bold text-emerald-700 uppercase">Saved</p>
                             </Transition>
                         </div>
-                    </form>
-                </div>
-            </SettingsLayout>
-        </AppLayout>
+                    </div>
+                </form>
+            </div>
+        </ShowdownLayout>
     );
 }

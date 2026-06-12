@@ -158,3 +158,23 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* Floating "+1" vote pop (guest/results live updates). */
+@keyframes vote-pop {
+    0% {
+        opacity: 0;
+        transform: translateY(6px) scale(0.8);
+    }
+    20% {
+        opacity: 1;
+        transform: translateY(0) scale(1.1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-28px) scale(1);
+    }
+}
+
+.animate-vote-pop {
+    animation: vote-pop 1.1s ease-out forwards;
+}

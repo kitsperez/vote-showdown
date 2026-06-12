@@ -53,14 +53,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Close — owning creator OR admin (PollPolicy@close), so NOT behind role:admin.
     Route::post('polls/{poll}/control/close', [ShowControlController::class, 'close'])->name('polls.control.close');
 
-    // Other run-time controls (add-time / restart) stay admin-only.
+    // Restart — owning creator OR admin (PollPolicy@restart).
+    Route::post('polls/{poll}/control/restart', [ShowControlController::class, 'restart'])->name('polls.control.restart');
+
+    // Other run-time controls (add-time) stay admin-only.
     Route::middleware('role:admin')
         ->prefix('polls/{poll}/control')
         ->name('polls.control.')
         ->controller(ShowControlController::class)
         ->group(function () {
             Route::post('add-time', 'addSeconds')->name('add-time');
-            Route::post('restart', 'restart')->name('restart');
         });
 });
 

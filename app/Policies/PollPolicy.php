@@ -34,11 +34,11 @@ class PollPolicy
     }
 
     /**
-     * Creators and admins may create polls.
+     * Any authenticated user may create a poll (they become its creator).
      */
     public function create(User $user): bool
     {
-        return $user->isCreator() || $user->isAdmin();
+        return true;
     }
 
     public function view(User $user, Poll $poll): bool
@@ -76,8 +76,15 @@ class PollPolicy
     }
 
     /**
-     * Other run-time controls (add-time / restart) stay admin-only (D1: admins retain
-     * cross-poll moderation).
+     * Wipe votes and start a fresh round (restart). Owning creator or admin.
+     */
+    public function restart(User $user, Poll $poll): bool
+    {
+        return $user->isAdmin() || $poll->creator_id === $user->id;
+    }
+
+    /**
+     * Other run-time controls (e.g. add-time) stay admin-only (D1: admins retain cross-poll moderation).
      */
     public function control(User $user, Poll $poll): bool
     {

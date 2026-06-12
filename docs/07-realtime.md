@@ -61,6 +61,10 @@ class PollStatusChanged implements ShouldBroadcast {
 - `tally` is the authoritative array from `VoteService::tally()` (`[{poll_option_id, label, count}]`) — clients render these numbers rather than incrementing locally, so everyone converges on the same totals.
 - `voter` is the minimal display payload for the ticker (`name`, `avatarText`, `avatarBgColor`, `votedOptionLabel`).
 
+## Dual private + public channels (guest live updates) `[new]`
+
+Each event's `broadcastOn()` returns **both** a `PrivateChannel("poll.{id}")` and a `Channel("poll.{id}")`. The authed page subscribes to the private channel (`echo().private`); the **no-login guest & results pages** subscribe to the public channel (`echo().channel`, hook `use-public-poll-channel.ts`) so they get the same live stream without `/broadcasting/auth`. This powers the `/r/{poll}` projection page: voters prepend live and a floating **+1** pops on the voted option per `VoterTicked` (no refresh). `->toOthers()` still excludes only the acting voter's own client, so spectators always receive.
+
 ## Channel authorization `[new]`
 
 ```php

@@ -1,7 +1,6 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { PlusCircle, Trophy } from 'lucide-react';
 import ShowdownLayout from '@/layouts/showdown-layout';
-import type { SharedData } from '@/types';
 import type { Poll } from '@/types/models';
 
 const statusStyles: Record<string, string> = {
@@ -11,8 +10,7 @@ const statusStyles: Record<string, string> = {
 };
 
 export default function PollsIndex({ polls }: { polls: Poll[] }) {
-    const { auth } = usePage<SharedData>().props;
-    const canCreate = auth.user?.role === 'creator' || auth.user?.role === 'admin';
+    const canCreate = true; // any authenticated user can create a poll
 
     return (
         <ShowdownLayout title="Tally Board" subtitle="Every showdown, live and archived">

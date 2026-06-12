@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { Compass, LogOut, PlusCircle, Trophy } from 'lucide-react';
+import { Compass, KeyRound, LogOut, PlusCircle, Trophy, UserCog } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
 import { FlashToast } from '@/components/showdown/flash-toast';
 import type { SharedData } from '@/types';
@@ -12,7 +12,7 @@ interface ShowdownLayoutProps {
 export default function ShowdownLayout({ title, subtitle, children }: PropsWithChildren<ShowdownLayoutProps>) {
     const { auth } = usePage<SharedData>().props;
     const user = auth.user;
-    const canCreate = user?.role === 'creator' || user?.role === 'admin';
+    const canCreate = !!user; // any authenticated user can create a poll
     const current = typeof window !== 'undefined' ? window.location.pathname : '';
 
     const navItem = (href: string, label: string, icon: React.ReactNode, active: boolean) => (
@@ -55,6 +55,14 @@ export default function ShowdownLayout({ title, subtitle, children }: PropsWithC
                                 <p className="truncate font-mono text-[11px] font-bold uppercase">{user?.name}</p>
                                 <p className="font-mono text-[9px] font-medium opacity-70 uppercase">{user?.role}</p>
                             </div>
+                        </div>
+                        <div className="mb-2 flex flex-col gap-1.5">
+                            <Link href={route('profile.edit')} className="flex items-center gap-2 rounded border-[2px] border-[#1b1b1b] bg-white px-3 py-1.5 font-mono text-[11px] font-bold uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5">
+                                <UserCog className="h-3.5 w-3.5" /> Edit profile
+                            </Link>
+                            <Link href={route('password.edit')} className="flex items-center gap-2 rounded border-[2px] border-[#1b1b1b] bg-white px-3 py-1.5 font-mono text-[11px] font-bold uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5">
+                                <KeyRound className="h-3.5 w-3.5" /> Change password
+                            </Link>
                         </div>
                         <button
                             type="button"

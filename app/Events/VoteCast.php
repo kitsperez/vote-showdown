@@ -25,9 +25,18 @@ class VoteCast implements ShouldBroadcast
         public array $tally,
     ) {}
 
-    public function broadcastOn(): Channel
+    /**
+     * Private channel for the authed page; public channel so the no-login guest/results
+     * pages get the same live stream.
+     *
+     * @return array<int, Channel>
+     */
+    public function broadcastOn(): array
     {
-        return new PrivateChannel("poll.{$this->poll->id}");
+        return [
+            new PrivateChannel("poll.{$this->poll->id}"),
+            new Channel("poll.{$this->poll->id}"),
+        ];
     }
 
     public function broadcastAs(): string

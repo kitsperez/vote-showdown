@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StorePollRequest;
+use App\Http\Requests\UpdatePollRequest;
 use App\Models\Poll;
 use App\Services\PollService;
 use App\Support\PollPresenter;
@@ -51,6 +52,8 @@ class PollController extends Controller
     {
         $this->authorize('view', $poll);
 
+        $this->polls->settleIfExpired($poll);
+
         $voters = $poll->votes()
             ->with(['user', 'option'])
             ->latest()
@@ -69,7 +72,28 @@ class PollController extends Controller
             'poll' => PollPresenter::present($poll, $request->user()),
             'voters' => $voters,
             'canControl' => $request->user()->can('control', $poll),
+            'canRestart' => $request->user()->can('restart', $poll),
+            'canClose' => $request->user()->can('close', $poll),
+            'canEdit' => $request->user()->can('update', $poll),
+            'canDelete' => $request->user()->can('delete', $poll),
         ]);
+    }
+
+    public function edit(Request $request, Poll $poll): Response
+    {
+        $this->authorize('update', $poll);
+
+        return Inertia::render('polls/edit', [
+            'poll' => PollPresenter::present($poll, $request->user()),
+            'hasVotes' => $poll->votes()->exists(),
+        ]);
+    }
+
+    public function update(UpdatePollRequest $request, Poll $poll): RedirectResponse
+    {
+        $this->polls->update($poll, $request->validated());
+
+        return redirect()->route('polls.show', $poll)->with('success', '✏️ Poll updated!');
     }
 
     public function destroy(Poll $poll): RedirectResponse

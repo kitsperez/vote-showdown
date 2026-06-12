@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Http\Requests\StoreGuestVoteRequest;
 use App\Models\Poll;
 use App\Models\User;
+use App\Services\PollService;
 use App\Services\VoteService;
 use App\Support\PollPresenter;
 use Illuminate\Http\RedirectResponse;
@@ -21,10 +22,15 @@ use Inertia\Response;
  */
 class PublicPollController extends Controller
 {
-    public function __construct(private readonly VoteService $votes) {}
+    public function __construct(
+        private readonly VoteService $votes,
+        private readonly PollService $polls,
+    ) {}
 
     public function show(Request $request, Poll $poll): Response
     {
+        $this->polls->settleIfExpired($poll);
+
         $voters = $poll->votes()
             ->with(['user', 'option'])
             ->latest()
@@ -51,9 +57,32 @@ class PublicPollController extends Controller
      */
     public function results(Poll $poll): Response
     {
+        $this->polls->settleIfExpired($poll);
+
         return Inertia::render('public-results', [
             'poll' => PollPresenter::present($poll),
+            'voters' => $this->recentVoters($poll),
         ]);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function recentVoters(Poll $poll)
+    {
+        return $poll->votes()
+            ->with(['user', 'option'])
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(fn ($vote) => [
+                'id' => $vote->id,
+                'name' => $vote->user->name,
+                'avatarText' => $vote->user->avatar_text ?? strtoupper(substr($vote->user->name, 0, 2)),
+                'avatarBgColor' => $vote->user->avatar_bg_color ?? 'bg-[#9cf0ff]',
+                'votedOptionLabel' => $vote->option?->label,
+                'votedAt' => $vote->created_at->diffForHumans(),
+            ]);
     }
 
     public function vote(StoreGuestVoteRequest $request, Poll $poll): RedirectResponse

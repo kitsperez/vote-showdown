@@ -11,7 +11,7 @@ Every poll has a **shareable public link**. Opening it shows a **guest page with
 - **Public view, no auth.** The guest page renders for anyone with the link. No sidebar, no session required.
 - **Guest vote → quick account.** Voting asks for an email (+ optional display name). The backend finds-or-creates an `invitee` user flagged `is_guest = true` (no password, **claimable** later by setting one). The vote is attributed to that user; dedupe is per user, so the same email can't double-vote a single-choice poll.
 - **QR & "Share" both target this page** (`/p/{poll}`), replacing the earlier login-gated `polls.join` as the primary audience entry. `polls.join` stays for authed deep-linking.
-- **Realtime for guests = polling.** The live tally channel is private (needs auth); guests can't subscribe. The guest page therefore **polls** (Inertia partial reload every few seconds) for a near-live tally. A public broadcast channel is a future enhancement — keep the authed page on Echo.
+- **Realtime for guests = public Echo channel (with polling backstop).** Events fan out to both a private and a **public** `poll.{id}` channel ([`../07-realtime.md`](../07-realtime.md)), so guest/results pages subscribe via `use-public-poll-channel.ts` and update **instantly** — the `/r/{poll}` results page prepends voters live and pops a floating **+1** on the voted option per `VoterTicked`. A slow `router.reload({ only: ['poll'] })` remains as a count backstop if Reverb is down.
 
 ## Data `[new]`
 

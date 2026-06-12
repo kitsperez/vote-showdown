@@ -28,16 +28,19 @@ it('lets a creator create and launch a poll', function () {
         ->and($poll->ends_at)->not->toBeNull();
 });
 
-it('forbids an invitee from creating a poll', function () {
+it('allows any authenticated user (incl. an invitee) to create a poll', function () {
     $invitee = User::factory()->invitee()->create();
 
     $this->actingAs($invitee)
         ->post(route('polls.store'), [
-            'title' => 'Nope',
+            'title' => 'Invitee poll',
+            'end_mode' => 'duration',
             'duration_seconds' => 120,
             'options' => [['label' => 'a'], ['label' => 'b']],
         ])
-        ->assertForbidden();
+        ->assertRedirect();
+
+    expect(Poll::where('creator_id', $invitee->id)->exists())->toBeTrue();
 });
 
 it('rejects fewer than two options', function () {

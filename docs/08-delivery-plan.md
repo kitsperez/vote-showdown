@@ -16,6 +16,10 @@
 | D8 | Public sharing & guest voting | Every poll has a public **shareable link** → sidebar-less **guest page**, viewable with **no login**. Guests **vote by email**; first vote creates a claimable `is_guest` account (one identity = one vote). QR + share target this page. Resolves the D2 magic-link/account-model open items. | [`modules/public-sharing.md`](modules/public-sharing.md) |
 | D9 | Optional poll password | A poll may set an **access password** required before voting; if none is set, voting proceeds anytime. Stored hashed (`polls.access_password`), verified once then remembered per session/cookie. | [`modules/poll-management.md`](modules/poll-management.md) |
 | D10 | Option images / icons | Each poll option may have an **uploaded image** (`image_path`) or a **named icon** (`icon`), shown on the option card in place of the number badge. | [`modules/poll-management.md`](modules/poll-management.md) |
+| D11 | Edit / delete / close authority | **Edit poll setup**: owning creator **or** super-admin. **Delete**: super-admin **only**. **Close early**: owning creator (or admin); add-time/restart stay admin-only. Options can only be added/removed before any votes exist. | [`modules/poll-management.md`](modules/poll-management.md) |
+| D12 | Guest page parity | The public guest page (`/p/{poll}`) uses the **same design as the authed `/polls/{id}` page, minus the sidebar** (main tally/voting column + side QR & voters feed). | [`modules/public-sharing.md`](modules/public-sharing.md) |
+| D13 | Anyone can create polls | **Every authenticated user** (including invitees) may create a poll and becomes its creator (`PollPolicy@create` → true). Role no longer gates creation. | [`modules/poll-management.md`](modules/poll-management.md) |
+| D14 | Light-only theme | The app is **light-only** cartoony Neo-Brutalism. Dark mode is disabled app-wide; auth pages, links (`TextLink`), and buttons use the brand palette (`--primary` = brand pink). Profile & password settings are linked from the sidebar. | [`design-reference.md`](design-reference.md) |
 
 ## Open decisions (must close before the noted phase)
 

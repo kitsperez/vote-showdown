@@ -80,11 +80,16 @@ class VoteService
      */
     protected function broadcastTally(Poll $poll, array $tally, array $voter): void
     {
-        broadcast(new VoterTicked($poll, $voter))->toOthers();
+        // A down/unreachable Reverb must never break a vote — log and move on.
+        try {
+            broadcast(new VoterTicked($poll, $voter))->toOthers();
 
-        // Cache::add is atomic: only the first caller within the window dispatches a tally.
-        if (Cache::add("tally-bcast:{$poll->id}", 1, now()->addMilliseconds(250))) {
-            broadcast(new VoteCast($poll, $tally))->toOthers();
+            // Cache::add is atomic: only the first caller within the window dispatches a tally.
+            if (Cache::add("tally-bcast:{$poll->id}", 1, now()->addMilliseconds(250))) {
+                broadcast(new VoteCast($poll, $tally))->toOthers();
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 }

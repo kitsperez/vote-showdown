@@ -25,9 +25,15 @@ class VoterTicked implements ShouldBroadcast
         public array $voter,
     ) {}
 
-    public function broadcastOn(): Channel
+    /**
+     * @return array<int, Channel>
+     */
+    public function broadcastOn(): array
     {
-        return new PrivateChannel("poll.{$this->poll->id}");
+        return [
+            new PrivateChannel("poll.{$this->poll->id}"),
+            new Channel("poll.{$this->poll->id}"),
+        ];
     }
 
     public function broadcastAs(): string

@@ -36,7 +36,7 @@ class ShowControlController extends Controller
 
     public function restart(Poll $poll): RedirectResponse
     {
-        $this->authorize('control', $poll);
+        $this->authorize('restart', $poll);
 
         $this->polls->restart($poll);
 

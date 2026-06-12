@@ -28,7 +28,7 @@ function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; labe
 }
 
 export default function Dashboard({ role, activePoll, polls, metrics }: DashboardProps) {
-    const canCreate = role === 'creator' || role === 'admin';
+    const canCreate = true; // any authenticated user can create a poll
 
     return (
         <ShowdownLayout

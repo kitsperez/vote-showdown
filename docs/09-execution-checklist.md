@@ -134,6 +134,7 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 - [x] `voted_poll_{id}` cookie so returning guests see "already voted"
 - [x] Inline `qr-share.tsx` (not modal); QR encodes the vote URL; shown on backend page side + both guest pages
 - [x] Results-only spectator page `pages/public-results.tsx` (`/r/{poll}`) with a QR linking to the vote page
+- [x] **Live guest updates:** events fan out to a public `poll.{id}` channel; `use-public-poll-channel.ts` drives the results page — voters prepend live + floating **+1** per vote, no refresh (polling backstop kept)
 - [ ] **Exit (pending live check):** logged-out visitor views & votes on `/p/{poll}` (no sidebar, no login); claimable account created; dedupe holds; rate-limited — needs Laragon MySQL up + feature tests
 
 ## Phase 5d · Optional poll password `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D9)
@@ -152,6 +153,23 @@ Strategy: **fresh Laravel skeleton on a branch, then port** — never install La
 - [ ] `PollService::create` saves uploaded images, sets `image_path`; `PollPresenter` exposes `imageUrl`/`icon`
 - [ ] Create form: per-option image upload (Inertia `forceFormData`); option cards render the image/icon in place of the number badge (create + show + public page)
 - [ ] **Exit:** an option with an uploaded image shows that image everywhere the poll renders
+
+## Phase 5f · Poll edit + roles + guest parity ✅ implemented `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D11/D12)
+
+- [x] `PollPolicy`: `update` (owner or admin), `delete` (**admin only**), `close` (owner or admin), `control` (admin only)
+- [x] Routes: `polls.edit` / `polls.update` (PUT/PATCH), `polls.control.close` moved out of the admin-only group
+- [x] `UpdatePollRequest` + `PollService::update` (resync options only when no votes; else edit-in-place)
+- [x] Shared `components/showdown/poll-form.tsx` used by both `create` and new `edit` page
+- [x] Show page exposes `canEdit`/`canClose`/`canDelete`; "Manage" panel renders Edit / Close / add-time / restart / Delete by permission
+- [x] Guest page redesigned to mirror `/polls/{id}` (main tally/voting + side QR & voters), minus sidebar (D12)
+- [x] Verified by Pest — 50 tests pass (owner & admin edit; non-owner forbidden; delete admin-only; creator can close own)
+
+## Phase 5g · Open creation + theme polish ✅ implemented `[new]` (D13/D14)
+
+- [x] `PollPolicy@create` → any authenticated user; create UI ungated (layout, dashboard, polls index) — verified by Pest (invitee can create)
+- [x] Force light-only theme (`use-appearance` never applies `dark`); `--primary`/`--ring` = brand pink
+- [x] Restyled `login` + `register` to brutalist inputs/buttons; brand-colored `TextLink`; brutalist `auth-simple-layout` + welcome
+- [x] Sidebar links to **Edit profile** (`profile.edit`) and **Change password** (`password.edit`)
 
 ## Phase 6 · Hardening & Deploy `[infra]` — spec: [`08-delivery-plan.md`](08-delivery-plan.md)
 
