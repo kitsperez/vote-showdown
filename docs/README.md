@@ -33,6 +33,8 @@ Each module file is a self-contained scaffold spanning DB → backend → fronte
 | Voting (cast vote, tally, dedupe) | [`modules/voting.md`](modules/voting.md) |
 | Dashboard & analytics (live metrics, results) | [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md) |
 | Admin controls (timer, close, reset, voter log) | [`modules/admin-controls.md`](modules/admin-controls.md) |
+| QR voting (scan-to-vote entry point) | [`modules/qr-voting.md`](modules/qr-voting.md) |
+| Public sharing & guest voting (no-login guest page) | [`modules/public-sharing.md`](modules/public-sharing.md) |
 
 ## Locked decisions
 
