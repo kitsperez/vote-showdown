@@ -6,6 +6,8 @@
 
 An **invitee** casts a vote on an active poll; the tally updates everywhere live. Ports the prototype's `InviteeView` and `handleCastVote`, but with real persistence, dedupe, and broadcasting — and with the fake simulator removed.
 
+> **Entry point:** voters reach this screen by **scanning a QR code** (or following a share link) — see [qr-voting.md](qr-voting.md). The QR is the primary way an audience joins a live showdown.
+
 ## Rules
 
 1. **Poll must be active.** `Poll::isActive()` (status `active` **and** not past `ends_at`). Expired/ended/draft → reject.

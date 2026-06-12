@@ -59,6 +59,7 @@ Schema::create('users', function (Blueprint $table) {
     $table->string('avatar_text', 4)->nullable();         // e.g. "JD"
     $table->string('avatar_bg_color')->default('bg-[#9cf0ff]');
     $table->boolean('is_demo')->default(false)->index();  // seed/demo voters, purgeable (M1)
+    $table->boolean('is_guest')->default(false)->index(); // claimable email-only account from guest voting (D8)
     $table->rememberToken();
     $table->timestamps();
 });
@@ -74,12 +75,26 @@ Schema::create('polls', function (Blueprint $table) {
     $table->text('description')->nullable();
     $table->boolean('allow_multiple')->default(false);
     $table->enum('status', ['draft', 'active', 'ended'])->default('draft')->index();
-    $table->unsignedInteger('duration_seconds')->default(120);
+
+    // Optional access gate (D9). Null = open (vote anytime); set = hashed password the
+    // voter must enter once before voting.
+    $table->string('access_password')->nullable();
+
+    // End mode: a relative countdown OR an absolute deadline. Either way ends_at is the
+    // single server-authoritative end the app reads from.
+    $table->enum('end_mode', ['duration', 'deadline'])->default('duration');
+    $table->unsignedInteger('duration_seconds')->nullable();   // used when end_mode = duration
+    $table->timestamp('deadline_at')->nullable();              // used when end_mode = deadline (creator-chosen)
+
     $table->timestamp('starts_at')->nullable();
-    $table->timestamp('ends_at')->nullable()->index();     // server-authoritative end
+    $table->timestamp('ends_at')->nullable()->index();         // resolved authoritative end
     $table->timestamps();
 });
 ```
+
+**End mode (deadline vs duration).** A poll ends either after a relative **countdown** (`duration_seconds`, ends_at computed at launch) or at an absolute **deadline date/time** (`deadline_at`, chosen by the creator). `ends_at` is always the resolved truth the rest of the app reads (`isActive`, `remainingSeconds`, the scheduler sweep, broadcasts) — so adding deadlines required no change to those consumers, only how `ends_at` is set:
+- `duration` → `ends_at = starts_at + duration_seconds` (set on launch).
+- `deadline` → `ends_at = deadline_at` (a deadline poll may even be launched with a fixed future end independent of when it started).
 
 ### `poll_options`
 
@@ -90,6 +105,8 @@ Schema::create('poll_options', function (Blueprint $table) {
     $table->string('label');
     $table->string('color_class')->default('bg-[#00e3fd]');
     $table->string('badge_color_class')->default('bg-[#00e3fd] text-[#1b1b1b]');
+    $table->string('image_path')->nullable();              // uploaded image (D10), shown on the option card
+    $table->string('icon')->nullable();                    // OR a named lucide icon (D10)
     $table->unsignedSmallInteger('position')->default(0);  // display order (old "01","02")
     $table->timestamps();
     $table->index(['poll_id', 'position']);
