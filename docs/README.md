@@ -1,54 +1,66 @@
-# Vote Showdown — Source of Truth
+# Vote Showdown - Source of Truth
 
-This `docs/` directory is the **authoritative architecture and scaffold** for evolving **Vote Showdown** from the current client-side AI Studio prototype (see [`../CLAUDE.md`](../CLAUDE.md)) into a production application:
+This `docs/` directory is the authoritative architecture, delivery plan, and feature contract for **Vote Showdown**.
 
-> **React 19 + TypeScript** (frontend) · **Inertia.js v2** (the glue) · **Laravel 12** (backend) · **MySQL 8** (database) · **Laravel Reverb + Echo** (real-time)
+Current stack:
 
-Every document here is a **scaffold + contract**: it describes the files to create, their responsibilities, the data shapes, and the conventions to follow. When code and these docs disagree, treat the disagreement as a bug to reconcile — update whichever is wrong.
+> **React 19 + TypeScript** (frontend) · **Inertia.js v2** (server-driven React) · **Laravel 12** (backend) · **MySQL 8** (database) · **Laravel Reverb + Echo** (real-time)
 
-## How to read this
+Every document here is a contract. When code and docs disagree, treat that disagreement as a bug to reconcile before starting the next feature.
 
-Read top-to-bottom for the first time; afterwards jump to the module you're touching.
+## How to Read This
 
 | # | Document | What it owns |
 |---|----------|--------------|
-| 00 | [`01-overview.md`](01-overview.md) | Product vision, the prototype→production migration plan, stack decisions & rationale |
-| 01 | [`02-architecture.md`](02-architecture.md) | System architecture, Inertia request lifecycle, full repo directory layout, conventions |
+| 00 | [`01-overview.md`](01-overview.md) | Product vision, migration context, stack decisions |
+| 01 | [`02-architecture.md`](02-architecture.md) | System architecture, request lifecycle, repo layout, conventions |
 | 02 | [`03-database.md`](03-database.md) | MySQL schema, migrations, ERD, relationships, seeders |
-| 03 | [`04-backend.md`](04-backend.md) | Laravel: models, controllers, form requests, policies, services, events, routes |
-| 04 | [`05-frontend.md`](05-frontend.md) | Inertia + React: pages, layouts, shared components, hooks, prototype→page mapping |
-| 05 | [`06-auth-and-roles.md`](06-auth-and-roles.md) | Authentication, the three roles, gates & policies |
-| 06 | [`07-realtime.md`](07-realtime.md) | Reverb broadcasting, events, Echo client, server-authoritative timer |
-| 🎨 | [`design-reference.md`](design-reference.md) | **Design source of truth** — cartoony Neo-Brutalist tokens, extracted from `src/`, per-screen reference map |
-| 📋 | [`08-delivery-plan.md`](08-delivery-plan.md) | **PM layer** — decision log, work breakdown, Definition of Ready/Done, environments, CI gates, risk register |
-| ✅ | [`09-execution-checklist.md`](09-execution-checklist.md) | **The ordered build checklist** — every step from cleanup → go-live, with hardening fixes embedded. Start here when coding begins. |
+| 03 | [`04-backend.md`](04-backend.md) | Laravel models, controllers, requests, policies, services, events, routes |
+| 04 | [`05-frontend.md`](05-frontend.md) | Inertia + React pages, layouts, components, hooks, types |
+| 05 | [`06-auth-and-roles.md`](06-auth-and-roles.md) | Auth, roles, guest accounts, policies |
+| 06 | [`07-realtime.md`](07-realtime.md) | Reverb broadcasting, events, Echo hooks, server-authoritative timer |
+| Design | [`design-reference.md`](design-reference.md) | Cartoony Neo-Brutalist design tokens and frozen prototype map |
+| PM | [`08-delivery-plan.md`](08-delivery-plan.md) | Decision log, work breakdown, readiness/done criteria, risk register |
+| Checklist | [`09-execution-checklist.md`](09-execution-checklist.md) | Current delivery state and ordered remaining work |
 
-### Feature modules (vertical slices)
+## Feature Modules
 
-Each module file is a self-contained scaffold spanning DB → backend → frontend for one product capability.
+Each module file is a vertical slice spanning DB, backend, frontend, and acceptance criteria.
 
 | Module | Document |
 |--------|----------|
-| Poll management (create, launch, lifecycle) | [`modules/poll-management.md`](modules/poll-management.md) |
-| Voting (cast vote, tally, dedupe) | [`modules/voting.md`](modules/voting.md) |
-| Dashboard & analytics (live metrics, results) | [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md) |
-| Admin controls (timer, close, reset, voter log) | [`modules/admin-controls.md`](modules/admin-controls.md) |
-| QR voting (scan-to-vote entry point) | [`modules/qr-voting.md`](modules/qr-voting.md) |
-| Public sharing & guest voting (no-login guest page) | [`modules/public-sharing.md`](modules/public-sharing.md) |
+| Poll management | [`modules/poll-management.md`](modules/poll-management.md) |
+| Voting | [`modules/voting.md`](modules/voting.md) |
+| Dashboard & analytics | [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md) |
+| Admin controls | [`modules/admin-controls.md`](modules/admin-controls.md) |
+| QR voting | [`modules/qr-voting.md`](modules/qr-voting.md) |
+| Public sharing & guest voting | [`modules/public-sharing.md`](modules/public-sharing.md) |
 
-## Locked decisions
+## Current Implementation Baseline
 
-These were decided at project inception and propagate through every doc. Full decision log + risk register: [`08-delivery-plan.md`](08-delivery-plan.md).
+- Laravel/Inertia production scaffold exists at the repo root.
+- The original `src/` prototype remains as a frozen design reference only.
+- Production React code lives under `resources/js/`; production styling lives in `resources/css/app.css`.
+- Poll CRUD, edit, launch, close, restart, countdown/deadline endings, optional passwords, option image/icon fields, authenticated voting, public guest voting, QR/share, public results, scheduled expiry, and Reverb events are implemented in code.
+- Magic-link / one-tap invitee voting is still a planned enhancement, not the current low-friction path.
+- Dashboard metrics exist but engagement-rate formula is still an open decision.
+- Dedicated voter audit/settings surfaces, live Reverb/load verification, CI, accessibility, and deployment hardening remain pending.
 
-1. **All three roles have real accounts** (email + password); invitees reach theirs via **magic-link / one-tap voting** to keep the QR flow low-friction (D2). One vote per user per poll (unless the poll allows multiple). No anonymous voting.
-2. **Polls are per-creator** — one active poll *per creator*, not a single global stage (D1). Admins retain cross-poll moderation.
-3. **Real-time via Laravel Reverb + Laravel Echo**, **split into a coalesced tally event + a per-vote ticker**, excluding the sender via a forwarded socket id (D3; see [`07-realtime.md`](07-realtime.md)). The prototype's fake `setInterval` simulator is removed.
-4. **Production on Laravel Forge + VPS** with Supervisor-managed Reverb/queue/scheduler and Redis (D4).
-5. **Inertia, not a separate REST API.** Controllers return Inertia responses (props), not JSON, except a thin set of endpoints documented in [`04-backend.md`](04-backend.md). Frontend route names require **Ziggy**.
-6. **Design comes from `src/`, and the look is cartoony.** All visual design is derived from the prototype files in `src/`, which are **kept as a frozen, read-only design reference** (never deleted during the migration). The aesthetic is cartoony Neo-Brutalism — thick black outlines, hard offset shadows, bright flat palette, playful tilts/bounce, hype copy. Tokens and per-screen reference map: [`design-reference.md`](design-reference.md).
+## Locked Decisions
 
-## Status legend used in these docs
+1. **Polls are per creator.** Launching a poll ends only that creator's other active poll. Admins retain cross-poll moderation.
+2. **Inertia, not a separate REST API.** Controllers return Inertia responses except narrow operational endpoints such as votes, controls, unlock, broadcast auth, and public guest routes.
+3. **Tallies are database-derived.** Vote counts come from `votes`, not client state.
+4. **Real-time uses Laravel Reverb + Echo.** The app broadcasts coalesced tally snapshots, per-vote ticker events, and poll status changes.
+5. **Public guest voting is implemented.** Logged-out voters can vote by email through `/p/{poll}`, creating claimable `is_guest` invitee accounts.
+6. **Magic-link voting is pending.** It remains a planned low-friction invitee path and must be reconciled with the implemented guest account model before coding.
+7. **Design comes from `src/`.** The aesthetic stays cartoony Neo-Brutalist: thick black outlines, hard offset shadows, bright flat palette, playful motion, and hype copy.
+8. **Production target is Forge/VPS.** Reverb, queue workers, scheduler, Redis, MySQL 8, TLS, and rollback need production hardening.
 
-- `[prototype]` — exists today in `src/`, must be ported.
-- `[new]` — to be built from scratch.
-- `[infra]` — framework/tooling setup, not feature code.
+## Status Legend
+
+- `[x]` - implemented or accepted in the current codebase/docs.
+- `[~]` - partially implemented or needs verification.
+- `[ ]` - not implemented or not verified.
+- `[prototype]` - exists in frozen `src/` reference.
+- `[production]` - exists in active Laravel/Inertia code.

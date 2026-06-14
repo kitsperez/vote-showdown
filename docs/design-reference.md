@@ -60,13 +60,16 @@ The avatar/background palette lives in `src/data.ts` (`bgColors`) — reuse it f
 
 When building the production page, open the matching prototype file for the exact design:
 
-| Production page (`resources/js`) | Design reference (`src/`) |
+| Production page/layout (`resources/js`) | Design reference (`src/`) |
 |---|---|
-| `pages/Polls/Create.tsx` | `src/components/PollCreatorView.tsx` |
-| `pages/Vote.tsx` | `src/components/InviteeView.tsx` (incl. circular timer, choice cards, bottom mobile nav) |
-| `pages/Polls/Show.tsx` | `src/components/ResultsTally.tsx` (winner banner, bento grid, confetti, voter feed) |
-| `pages/Dashboard.tsx` (admin) | `src/components/AdminDashboard.tsx` |
-| `layouts/ShowrunnerLayout.tsx` | the `<aside>` sidebar + `<header>` in `src/App.tsx` |
+| `pages/polls/create.tsx` | `src/components/PollCreatorView.tsx` |
+| `pages/polls/edit.tsx` | `src/components/PollCreatorView.tsx` |
+| `pages/polls/show.tsx` | `src/components/ResultsTally.tsx` and `src/components/InviteeView.tsx` |
+| `pages/dashboard.tsx` | `src/components/AdminDashboard.tsx` |
+| `pages/public-poll.tsx` | `src/components/InviteeView.tsx` |
+| `pages/public-results.tsx` | `src/components/ResultsTally.tsx` |
+| `layouts/showdown-layout.tsx` | the `<aside>` sidebar + `<header>` in `src/App.tsx` |
+| `layouts/guest-layout.tsx` | the minimal invitee/public view framing in `src/components/InviteeView.tsx` |
 | nav / user menu | `src/components/RoleSelector.tsx` |
 
 ## What to avoid

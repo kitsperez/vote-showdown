@@ -1,93 +1,85 @@
-# 08 · Delivery Plan (PM Layer)
+# 08 - Delivery Plan (PM Layer)
 
-> Part of the [Vote Showdown source of truth](README.md). This is the "is it actually ready to build and ship" layer: resolved decisions, work breakdown, gates, risks, environments.
+> Strategic delivery layer for Vote Showdown. The tactical checklist lives in [`09-execution-checklist.md`](09-execution-checklist.md).
 
-## Resolved decisions (decision log)
+## Current Status
 
-| # | Decision | Choice | Impact |
-|---|----------|--------|--------|
-| D1 | Poll scope | **Per-creator independent** — one active poll *per creator*, not global | Launch ends only the *same creator's* active poll; dashboards & channels are per-poll; admins retain cross-poll moderation/control via `PollPolicy@control` but there is no single global "stage" |
-| D2 | Voter identity | Full accounts **+ magic-link / one-tap voting** | Invitees can vote via emailed magic link (low-friction QR flow) that creates/links a lightweight account; one vote per user per poll still holds |
-| D3 | Real-time | Laravel Reverb + Echo | Always-on WS + queue + scheduler processes required |
-| D4 | Production | **Laravel Forge + VPS** | Supervisor-managed Reverb/queue/scheduler; deploy pipeline via Forge |
-| D5 | Design | Cartoony Neo-Brutalism sourced from frozen `src/` | See [`design-reference.md`](design-reference.md) |
-| D6 | QR scan-to-vote | One QR per poll encodes a public `polls.join` URL; auth happens behind it | New entry point for live audiences — [`modules/qr-voting.md`](modules/qr-voting.md) |
-| D7 | Poll end mode | Polls end by **countdown** (`duration_seconds`) **or** an absolute **deadline date** (`deadline_at`); both resolve to `ends_at` | [`modules/poll-management.md`](modules/poll-management.md), [`03-database.md`](03-database.md) |
-| D8 | Public sharing & guest voting | Every poll has a public **shareable link** → sidebar-less **guest page**, viewable with **no login**. Guests **vote by email**; first vote creates a claimable `is_guest` account (one identity = one vote). QR + share target this page. Resolves the D2 magic-link/account-model open items. | [`modules/public-sharing.md`](modules/public-sharing.md) |
-| D9 | Optional poll password | A poll may set an **access password** required before voting; if none is set, voting proceeds anytime. Stored hashed (`polls.access_password`), verified once then remembered per session/cookie. | [`modules/poll-management.md`](modules/poll-management.md) |
-| D10 | Option images / icons | Each poll option may have an **uploaded image** (`image_path`) or a **named icon** (`icon`), shown on the option card in place of the number badge. | [`modules/poll-management.md`](modules/poll-management.md) |
-| D11 | Edit / delete / close authority | **Edit poll setup**: owning creator **or** super-admin. **Delete**: super-admin **only**. **Close early**: owning creator (or admin); add-time/restart stay admin-only. Options can only be added/removed before any votes exist. | [`modules/poll-management.md`](modules/poll-management.md) |
-| D12 | Guest page parity | The public guest page (`/p/{poll}`) uses the **same design as the authed `/polls/{id}` page, minus the sidebar** (main tally/voting column + side QR & voters feed). | [`modules/public-sharing.md`](modules/public-sharing.md) |
-| D13 | Anyone can create polls | **Every authenticated user** (including invitees) may create a poll and becomes its creator (`PollPolicy@create` → true). Role no longer gates creation. | [`modules/poll-management.md`](modules/poll-management.md) |
-| D14 | Light-only theme | The app is **light-only** cartoony Neo-Brutalism. Dark mode is disabled app-wide; auth pages, links (`TextLink`), and buttons use the brand palette (`--primary` = brand pink). Profile & password settings are linked from the sidebar. | [`design-reference.md`](design-reference.md) |
+The project has moved beyond the original prototype migration plan. Laravel/Inertia scaffolding and the core production polling flow are implemented. Remaining work is now hardening, unresolved product decisions, live verification, and deployment readiness.
 
-## Open decisions (must close before the noted phase)
+## Decision Log
 
-| Item | Needed by | Owner |
-|------|-----------|-------|
-| Engagement-rate denominator (eligible invitees vs configured target) | Phase 5 | Product |
-| New-signup default role policy (auto-invitee + manual elevation, or invite-only creators/admins) | Phase 1 | Product |
-| ~~Magic-link account model (full user row vs claimable guest)~~ | ✅ Resolved by D8 — claimable `is_guest` user row keyed by email | — |
-| Tally-broadcast coalescing window (e.g. 250ms) tuning | Phase 4 | Eng |
+| ID | Decision | Current status |
+|---|---|---|
+| D1 | Polls are scoped per creator; one active poll per creator | Implemented |
+| D2 | Magic-link / one-tap invitee voting | Pending; reconcile with guest accounts first |
+| D3 | Realtime via Reverb/Echo with tally + ticker + status events | Implemented; live/load verification pending |
+| D4 | Production target is Forge/VPS | Pending deploy work |
+| D5 | Inertia, not a separate REST API | Implemented |
+| D6 | QR scan-to-vote | Implemented, but canonical QR target needs decision |
+| D7 | Server-authoritative timer through `ends_at` | Implemented |
+| D8 | Public sharing and guest voting | Implemented |
+| D9 | Optional poll access password | Implemented |
+| D10 | Option images/icons | Implemented in schema/service/types; browser verification pending |
+| D11 | Edit/delete/close authority | Implemented: owner/admin edit/close/restart, admin delete/add-time |
+| D12 | Guest page parity with authenticated poll view | Implemented |
+| D13 | Any authenticated user can create polls | Implemented |
+| D14 | Light-only brutalist theme polish | Implemented |
 
-## Work breakdown (epics → tickets)
+## Remaining Epics
 
-Sized in T-shirt points; each ticket carries the acceptance criteria already written in its module doc.
+| Epic | Goal | Status |
+|---|---|---|
+| Realtime verification | Prove private/public channels, socket-id behavior, fallback, and load | Pending |
+| Product decisions | Resolve magic-link model, QR target, signup role, engagement formula | Pending |
+| Admin completion | Voter audit/log and product settings decision | Pending |
+| Media verification | Confirm option image upload/render flow end to end | Pending |
+| Quality gates | Pest/build/lint/format/drift tests in CI | Pending |
+| Accessibility | Keyboard, focus, labels, contrast, mobile checks | Pending |
+| Deployment | Forge/VPS, Redis, Supervisor, Reverb, scheduler, TLS, smoke/rollback | Pending |
 
-| Phase | Epic | Key tickets | Size |
-|-------|------|-------------|------|
-| 0 | Scaffold | Fresh Laravel 12 skeleton on a branch; port `src/` → `resources/js`; wire Vite (laravel-vite-plugin + existing React/Tailwind); MySQL `.env`; Inertia + React starter; **add Ziggy**; `composer dev` orchestrator (app+vite+reverb+queue) | M |
-| 1 | Data & auth | Migrations + models + factories; seeders; auth (starter kit); roles + `EnsureUserHasRole`; **magic-link voting** flow | L |
-| 2 | Poll management | `PollService` (create/launch/close/restart); `PollController`; Create/Index/Show pages | L |
-| 3 | Voting | `VoteService` (lock-based dedupe); `VoteController`; Vote page; tally read model | M |
-| 4 | Real-time | Reverb + Echo install; `VoteCast`/`PollStatusChanged`; channel auth; socket-id forwarding; **tally-broadcast coalescing**; `useCountdown` | M |
-| 5 | Dashboard/admin | metrics service; ShowControl; scheduler auto-end; voter log | M |
-| 6 | Hardening | Pest coverage; rate limits (votes/create/control); enum-drift test; a11y pass; Forge deploy | M |
+## Definition of Ready
 
-**Critical path:** 0 → 1 → 2 → 3 → 4. Phase 5 depends on 4; Phase 6 runs continuously but gates release.
+A ticket may start only if:
 
-## Definition of Ready (a ticket may start only if…)
+- The relevant route/schema/component/service boundary is known.
+- Any product decision it depends on is closed or explicitly scoped as a spike.
+- Acceptance criteria are written in the module doc or checklist.
+- Required local services are known, especially MySQL/Reverb/queue/scheduler for live features.
 
-- Acceptance criteria are written and testable (module docs provide them).
-- No unresolved "open decision" blocks it (see table above).
-- Data shape (migration/props/TS type) is specified or unchanged.
-- Authorization rule is named (which policy/ability/role).
+## Definition of Done
 
-## Definition of Done (a ticket is done only if…)
+A ticket is done only if:
 
-- Acceptance criteria pass; Pest test(s) added/updated and green.
-- `npm run build` + `php artisan test` pass in CI.
-- Server enforces authorization (not just hidden in UI); inputs validated in a FormRequest.
-- No `alert()`, no leftover simulator/mock for that feature; flash→toast used.
-- Docs updated if the contract changed (enums/types/routes).
+- Code and docs agree.
+- Server-side validation/authorization are in place.
+- Feature behavior is covered by focused Pest tests where practical.
+- Frontend build/lint implications are handled.
+- Realtime behavior is manually verified when the feature depends on Reverb.
+- UX follows the frozen `src/` design reference unless the docs intentionally change the design.
 
-## Environments
+## Risk Register
 
-| Env | Purpose | Notes |
-|-----|---------|-------|
-| Local | Laragon (PHP/MySQL) + Vite + Reverb + queue + scheduler | 4–5 processes via `composer dev`; `schedule:work` for auto-end |
-| Staging | Forge VPS mirror of prod | smoke test broadcasting under real WS |
-| Production | Forge + VPS | Supervisor runs `reverb:start`, `queue:work`, scheduler cron; Redis for queue/cache; MySQL 8; TLS for `wss://` |
+| ID | Risk | Impact | Mitigation |
+|---|---|---|---|
+| R1 | Hot poll overwhelms broadcasts | High | Coalesce tallies, keep ticker cheap, load test |
+| R2 | Single-choice double vote race | High | `Cache::lock` plus DB uniqueness |
+| R3 | Acting voter sees duplicate updates | Medium | Verify socket-id/`toOthers()` behavior |
+| R4 | Public endpoint abuse | Medium | Rate limits, logging, guest-account dedupe |
+| R5 | Magic-link abuse | Medium | Signed temporary URLs, rate limits, expiry, email policy |
+| R6 | Reverb unavailable | Medium | Writes tolerate broadcast failure, define degraded UX |
+| R7 | Docs/code drift | High | Update docs in same change, use this checklist before coding |
+| R8 | Expired polls remain active | Medium | `settleIfExpired` plus scheduler |
+| R9 | Option media storage mismatch | Medium | Verify `storage:link`, public disk URLs, rendering |
+| R10 | Auth role policy ambiguity | Medium | Close signup/elevation decision before role changes |
 
-## CI gates (minimum)
+## Release Gates
 
-`php artisan test` (Pest) · `npm run build` (Vite/TS compile) · `tsc --noEmit` · enum-contract drift test (PHP enums == TS unions). Block merge on any red.
-
-## Risk register
-
-| ID | Risk | Likelihood | Impact | Mitigation |
-|----|------|-----------|--------|------------|
-| R1 | Broadcast flooding on a hot poll (votes/sec × clients) | High | High | Coalesce tally broadcasts to ≤4/s ([`07-realtime.md`](07-realtime.md)); load-test in staging |
-| R2 | Vote dedupe race (single-choice, concurrent) | High | High | Atomic `Cache::lock` per user+poll ([`modules/voting.md`](modules/voting.md)) |
-| R3 | `toOthers()` self-echo double count | Med | Med | Forward Echo socket id on Inertia requests ([`07-realtime.md`](07-realtime.md)) |
-| R4 | Big-bang in-place Laravel install corrupts the Vite app | Med | High | Fresh skeleton on a branch, port in; never install over existing root |
-| R5 | Magic-link voting abuse / spam | Med | Med | Rate-limit link issuance + voting; signed, expiring links |
-| R6 | Reverb process dies in prod, silently no live updates | Med | Med | Supervisor auto-restart + health check + client reconnect/poll fallback |
-| R7 | Enum/type contract drift (PHP↔TS) breaks pages silently | Med | Med | CI drift test (gate) |
-| R8 | Carbon 3 time math regressions (timer) | Med | Med | Use `isFuture()` guard; unit-test `remainingSeconds` |
-
-## Rollback / safety
-
-- Migrations are reversible (`down()` defined) or paired with a re-create seeder for demo data.
-- Feature work behind branches; Forge keeps the prior release for instant rollback.
-- Real-time degrades gracefully: if Echo can't connect, the client falls back to a periodic `router.reload({ only: ['poll'] })` so tallies still update (document in Phase 4).
+- [ ] `php artisan test` green and passing count recorded.
+- [ ] `npm run build` green.
+- [ ] Lint/format checks green.
+- [ ] Enum/type drift check exists.
+- [ ] Live Reverb smoke test passes for authenticated and public pages.
+- [ ] Public guest voting and password-gated voting verified.
+- [ ] Accessibility pass completed.
+- [ ] Forge/VPS staging mirrors production topology.
+- [ ] Rollback path verified.

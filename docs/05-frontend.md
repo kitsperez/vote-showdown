@@ -1,112 +1,103 @@
-# 05 · Frontend (Inertia v2 + React 19 + TS)
+# 05 - Frontend (Inertia v2 + React 19 + TS)
 
-> Part of the [Vote Showdown source of truth](README.md). Prototype components live in `src/` today — see [`../CLAUDE.md`](../CLAUDE.md).
->
-> **Design rule:** every page/component's visual design is taken from its counterpart in `src/` (kept as a frozen, read-only design reference) and must stay **cartoony Neo-Brutalist**. Before building any screen, open the matching `src/` file and the per-screen map in [`design-reference.md`](design-reference.md).
+> Part of the [Vote Showdown source of truth](README.md). Prototype components live in `src/` as frozen design reference; production UI lives in `resources/js/`.
 
-## The mental shift from the prototype
+## Frontend Baseline
 
-Today `App.tsx` owns **all** state and routing via flags. Under Inertia:
+The production frontend is an Inertia React app. Laravel routes/controllers choose page components and pass typed props; React owns local UI state only. Domain mutations go through Inertia form submissions or router actions, and live updates arrive through Echo/Reverb hooks.
 
-- **The server is the router.** A controller picks the page component name and passes props. No more `currentRole`/`adminTab` switch tree in one giant file.
-- **Server data arrives as page props**, typed. `useState` is reserved for *local UI* state (form fields, open menus), not domain data.
-- **Mutations go through `router`/`useForm`**, which POST to Laravel and reload only the affected props. Live updates from *other* users arrive via Echo (see [`07-realtime.md`](07-realtime.md)).
+The old prototype `src/App.tsx` remains useful only as a design and interaction reference. Its stateful handlers now map to Laravel controllers/services.
 
-So `App.tsx` dissolves: its handlers move to controllers/services, its render branches become separate Inertia pages, and its child components are reused almost verbatim as presentational pieces fed by props.
+## Entry
 
-> **Dependency note (H1):** the `route()` calls below need **Ziggy** (`tightenco/ziggy`) installed and wired in Phase 0 — see [`04-backend.md`](04-backend.md). Without it, `route()` is undefined in the browser.
+- `resources/js/app.tsx` - Inertia `createInertiaApp` entry.
+- `resources/css/app.css` - Tailwind v4 theme and brutalist styling tokens.
+- `resources/js/types/models.ts` - TypeScript read-model contract matching PHP presenters/events.
+- `resources/js/lib/utils.ts` - shared frontend utilities.
 
-## Inertia entry `[infra]`
+## Type Contract
 
-```tsx
-// resources/js/app.tsx
-import { createInertiaApp } from '@inertiajs/react';
-import { createRoot } from 'react-dom/client';
-import './bootstrap';            // axios + Echo
-import '../css/app.css';         // = old src/index.css (@theme block intact)
+`resources/js/types/models.ts` currently includes:
 
-createInertiaApp({
-  resolve: (name) => {
-    const pages = import.meta.glob('./pages/**/*.tsx', { eager: true });
-    return pages[`./pages/${name}.tsx`];
-  },
-  setup: ({ el, App, props }) => createRoot(el).render(<App {...props} />),
-});
-```
+- `PollStatus = 'draft' | 'active' | 'ended'`
+- `PollEndMode = 'duration' | 'deadline'`
+- `PollOption` with `colorClass`, `badgeColorClass`, `imageUrl`, `icon`, `position`, and server-derived `count`
+- `Poll` with `requiresPassword`, `unlocked`, `endMode`, `durationSeconds`, `deadlineAt`, `endsAt`, `remainingSeconds`, `totalVotes`, `hasVoted`, and `options`
+- `VoterEntry`
+- `PollMetrics`
+- Realtime payloads for vote tally, voter ticker, and poll status
 
-## Types — the contract `[prototype→kept in sync]`
+Keep this file synchronized with `app/Enums/*`, `app/Support/PollPresenter.php`, and `app/Events/*::broadcastWith()`.
 
-`resources/js/types/models.ts` is the TS mirror of the PHP enums/models. Ported from `src/types.ts` with the read-model `count` made explicit:
+## Pages
 
-```ts
-export type UserRole = 'admin' | 'creator' | 'invitee';      // mirrors UserRole enum
-export type PollStatus = 'draft' | 'active' | 'ended';        // mirrors PollStatus enum
+Current active Inertia pages:
 
-export interface User { id: number; name: string; email: string; role: UserRole; avatarText: string; avatarBgColor: string; }
-export interface PollOption { id: number; label: string; colorClass: string; badgeColorClass: string; position: number; count: number; } // count is server-derived
-export interface Poll { id: number; title: string; description: string | null; allowMultiple: boolean; status: PollStatus; durationSeconds: number; endsAt: string | null; remainingSeconds: number; options: PollOption[]; }
-export interface VoterEntry { id: number; name: string; email: string; avatarText: string; avatarBgColor: string; votedOptionLabel: string; votedAt: string; }
+| Page | Responsibility |
+|------|----------------|
+| `pages/welcome.tsx` | Public landing/auth entry with brutalist styling |
+| `pages/dashboard.tsx` | Role-aware dashboard with active poll, recent polls, and metrics |
+| `pages/polls/index.tsx` | Poll list and poll entry points |
+| `pages/polls/create.tsx` | Create/launch poll using shared poll form |
+| `pages/polls/edit.tsx` | Edit poll setup using shared poll form |
+| `pages/polls/show.tsx` | Authenticated poll show/results/voting/control surface |
+| `pages/public-poll.tsx` | Public no-login guest voting page |
+| `pages/public-results.tsx` | Public spectator/results page with QR back to voting |
+| `pages/auth/*` | Starter auth flows, restyled for the brand |
+| `pages/settings/*` | Starter profile/password/appearance pages |
 
-// Props Inertia shares on every page (HandleInertiaRequests)
-export interface SharedProps { auth: { user: User | null }; flash: { success?: string; error?: string }; }
-```
+Planned/not yet complete:
 
-> Backend serializes camelCase props (configure the model `toArray`/Resource mapping) so these match. Keep enum unions identical to [`04-backend.md`](04-backend.md).
+- Dedicated voter audit/log page.
+- Product-specific show/settings page, or explicit retirement of the prototype settings tab.
+- Magic-link vote landing page if the final D2 flow needs a distinct UI.
 
-## Pages (= the prototype's render branches) `[new+prototype]`
+## Layouts
 
-| Inertia page | Replaces (prototype) | Props | Notes |
-|---|---|---|---|
-| `pages/Dashboard.tsx` | role-aware home | `auth`, role-specific summary | creators see overview; admins see Showrunner panel (delegates to the AdminDashboard component) |
-| `pages/Polls/Index.tsx` | creator poll list | `polls: Poll[]` | list + statuses |
-| `pages/Polls/Create.tsx` | `PollCreatorView` `[prototype]` | `defaults` | form via `useForm`; POST `polls.store` |
-| `pages/Polls/Show.tsx` | `ResultsTally` + live tally `[prototype]` | `poll: Poll`, `voters: VoterEntry[]` | subscribes to poll channel; renders tally race + ticker |
-| `pages/Vote.tsx` | `InviteeView` `[prototype]` | `poll: Poll`, `hasVoted: boolean` | the invitee voting screen; POST `polls.votes.store` |
-| `pages/Admin/Voters.tsx` | voters table (inlined in `App.tsx`) | `voters: VoterEntry[]` | audit log; admin/creator |
-| `pages/Settings.tsx` | settings tab (inlined in `App.tsx`) | — | timer defaults, reset actions |
+- `layouts/showdown-layout.tsx` - primary authenticated showdown shell.
+- `layouts/guest-layout.tsx` - sidebar-less public voting/results shell.
+- `layouts/app-layout.tsx` and nested `layouts/app/*` - starter shell support.
+- `layouts/auth/*` - restyled auth layouts.
+- `layouts/settings/layout.tsx` - settings shell.
 
-## Layouts `[prototype]`
+## Components
 
-The prototype's chrome (sidebar nav + header for creator/admin; bare layout for invitee) becomes persistent Inertia layouts:
+Current showdown components:
 
-- `layouts/ShowrunnerLayout.tsx` — the `<aside>` sidebar + `<header>` from `App.tsx` (Dashboard / Live Polls / Voter List / Settings nav), wrapping creator & admin pages. Active-tab styling now derives from the current route, not `adminTab` state.
-- `layouts/InviteeLayout.tsx` — minimal wrapper for `Vote.tsx`.
+- `components/showdown/poll-form.tsx` - shared create/edit poll form.
+- `components/showdown/qr-share.tsx` - QR/share panel for vote/results links.
+- `components/showdown/countdown-badge.tsx` - display countdown from server `endsAt`.
+- `components/showdown/option-badge.tsx` - option icon/image/badge rendering.
+- `components/showdown/flash-toast.tsx` - flash/toast feedback replacing production `alert()`.
 
-Assign via Inertia's persistent layout pattern (`Page.layout = (page) => <ShowrunnerLayout>{page}</ShowrunnerLayout>`) so the sidebar doesn't remount between visits.
+Shared UI components live under `resources/js/components/ui/`, based on the starter/Radix-style component set.
 
-## Components `[prototype — port as-is]`
+## Hooks
 
-Move under `resources/js/components/`, strip their data ownership, feed via props:
+- `use-countdown.ts` - local display countdown over server-authoritative `endsAt`.
+- `use-poll-channel.ts` - authenticated/private poll channel listener.
+- `use-public-poll-channel.ts` - public poll channel listener for guest/results pages.
+- `use-appearance.tsx` - currently forced light-only theme behavior.
 
-- `RoleSelector.tsx` → becomes a real account/role switch is unnecessary (role is on the user); repurpose as a nav/user menu or drop. The persona is now the logged-in user's `role`.
-- `PollCreatorView.tsx` → used by `pages/Polls/Create.tsx`; replace `onLaunchPoll` callback with `useForm().post`.
-- `InviteeView.tsx` → used by `pages/Vote.tsx`; `onCastVote` → form POST.
-- `AdminDashboard.tsx` → used by `pages/Dashboard.tsx` (admin); metrics now come from props/Echo, not the simulator. See [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md).
-- `ResultsTally.tsx` → used by `pages/Polls/Show.tsx`; tallies from props, updated by `usePollChannel`.
-- `components/Toast.tsx` `[new]` — renders `flash` shared prop, replacing every `alert()`.
-- `components/showdown/qr-panel.tsx` `[new]` — renders a scan-to-vote QR (via `qrcode.react`) encoding the absolute `polls.join` URL; opened from the poll/show header & dashboard QR button. Ports the prototype's header QR button. See [`modules/qr-voting.md`](modules/qr-voting.md). Add dependency `qrcode.react`.
+## Prototype Logic Mapping
 
-## Hooks `[new]`
-
-```ts
-// hooks/usePollChannel.ts — subscribe to live updates for one poll
-export function usePollChannel(pollId: number, onVote: (tally: PollOption[]) => void, onStatus: (p: Poll) => void): void;
-
-// hooks/useCountdown.ts — render seconds remaining from server endsAt (display only; server is authoritative)
-export function useCountdown(endsAt: string | null): number;
-```
-
-`useCountdown` replaces the prototype's authoritative `setInterval` timer in `App.tsx` — it ticks locally for smooth display but the real end is enforced server-side and announced via `PollStatusChanged`.
-
-## What the prototype's `App.tsx` logic becomes
-
-| Prototype handler/effect | New home |
+| Prototype behavior | Production home |
 |---|---|
-| `handleCastVote` | `VoteController@store` → `VoteService::cast` |
-| `handleLaunchPoll` | `PollController@store`/`update` → `PollService::launch` |
-| `handleClosePoll` | `ShowControlController@close` → `PollService::close` |
-| `handleRestartPoll` | `ShowControlController@restart` → `PollService::restart` |
-| `handleAddSeconds` | `ShowControlController@addSeconds` → `PollService::addSeconds` |
-| countdown `useEffect` | `useCountdown` (display) + `polls.ends_at` (truth) |
-| simulator `useEffect` | **deleted** — real votes broadcast via `VoteCast` |
-| `alert()` everywhere | `flash` shared prop + `Toast` |
+| Cast vote | `VoteController@store`, `PublicPollController@vote`, `VoteService::cast` |
+| Create/launch poll | `PollController@store`, `PollService::create`, `PollService::launch` |
+| Edit poll | `PollController@edit/update`, `PollService::update` |
+| Close poll | `ShowControlController@close`, `PollService::close` |
+| Restart poll | `ShowControlController@restart`, `PollService::restart` |
+| Add time | `ShowControlController@addSeconds`, `PollService::addSeconds` |
+| Countdown | `useCountdown` display plus `polls.ends_at` server truth |
+| Fake simulator | Removed from production; real votes broadcast through Reverb |
+| `alert()` | Production flash/toast |
+
+## Remaining Frontend Work
+
+- [ ] Verify all current pages against the frozen `src/` design reference.
+- [ ] Finish dedicated voter audit/log UI if still part of product scope.
+- [ ] Decide whether the old settings tab becomes product settings or is retired.
+- [ ] Complete accessibility pass.
+- [ ] Verify public and authenticated Reverb behavior in real browsers.
+- [ ] Confirm option images/icons render correctly everywhere.

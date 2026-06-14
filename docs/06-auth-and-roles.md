@@ -1,65 +1,77 @@
-# 06 · Authentication & Roles
+# 06 - Authentication & Roles
 
-> Part of the [Vote Showdown source of truth](README.md). Decision: **all three roles have real accounts** ([`01-overview.md`](01-overview.md)).
+> Part of the [Vote Showdown source of truth](README.md).
 
-## Authentication `[infra]`
+## Authentication
 
-Use Laravel's official **Inertia + React starter kit** (Laravel 12 ships React/TS/Tailwind starters) — or Breeze (Inertia React) — for login, registration, password reset, and email verification. This gives us the auth pages, `auth` middleware, and the session guard out of the box; we layer roles on top.
+The app uses Laravel's Inertia + React starter authentication stack:
 
-- Sessions over cookies (default web guard). No token/SPA-API auth needed — Inertia rides the session.
-- Registration captures `name`, `email`, `password`, and **role**. For a public app you'd default new sign-ups to `invitee` and elevate creators/admins manually (or via an invite); document the chosen policy in the register controller. Avatar fields (`avatar_text`, `avatar_bg_color`) are derived on registration (initials + a color from the brutalist palette in `src/data.ts`).
+- Session-based web guard.
+- Login, registration, password reset, email verification, profile, and password settings pages.
+- Shared Inertia auth/flash context through `HandleInertiaRequests`.
+- Role data stored on `users.role` and cast through `App\Enums\UserRole`.
 
-## Magic-link / one-tap voting (decision D2)
+## Current Account Paths
 
-Requiring full register→verify→login before a live audience can vote would tank participation (the QR quick-vote flow is the product's core moment). So invitees keep accounts, but reach them frictionlessly:
+Current implemented paths:
 
-- A poll's **QR / share link** points at a signed, expiring **magic link**. Following it logs the visitor into a lightweight `invitee` account (created on first use, keyed by email), then drops them straight on the `Vote` page — no password step.
-- Returning voters with a session skip the link entirely.
-- **Abuse controls (risk R5):** rate-limit link issuance and the voting endpoint; links are signed (`URL::temporarySignedRoute`) and short-lived; one vote per user per poll still holds via the `Cache::lock` in [`modules/voting.md`](modules/voting.md).
-- **Open item:** whether the lightweight account is a full `users` row or a claimable "guest" that can later set a password — decide in Phase 1 ([`08-delivery-plan.md`](08-delivery-plan.md)).
+- **Authenticated users** can log in and access dashboard/poll pages.
+- **Public guests** can open `/p/{poll}` and vote by email.
+- A public guest vote resolves or creates a claimable `users.is_guest = true` invitee account keyed by email.
+- Returning guest UI can use the `voted_poll_{id}` cookie as a convenience signal; server-side dedupe still comes from vote rows/service checks.
 
-The earlier "full accounts" decision stands; magic-link is the *delivery mechanism* for invitee accounts, not a reversal.
+Planned path:
 
-## The three roles
+- **Magic-link / one-tap voting** remains pending. It should be reconciled with the implemented guest account model before coding. The likely target is a signed temporary route that creates or resolves an invitee/guest account, establishes session context if needed, and lands directly on the voting page.
 
-| Role | Account | Can do |
-|------|---------|--------|
-| **admin** (Showrunner) | yes | Everything a creator can, **plus** run-time show controls: close a poll early, add time, restart/reset, view full voter logs across polls. |
-| **creator** | yes | Create, edit, launch, and delete **their own** polls; view results & their voters. |
-| **invitee** (voter) | yes | Browse active polls and **cast one vote** per poll (or one per option if `allow_multiple`); see live results. Cannot create or control polls. |
+## Roles
 
-Stored as `users.role` (enum, see [`03-database.md`](03-database.md)) and cast to `UserRole` (see [`04-backend.md`](04-backend.md)). There is no dynamic permission system — three fixed roles cover every requirement, so we deliberately avoid `spatie/laravel-permission` unless roles become data-driven later.
+| Role | Account | Current capability |
+|------|---------|--------------------|
+| `admin` | yes | Oversee any poll, add time, delete polls, access admin-level controls, and moderate across creators |
+| `creator` | yes | Create, edit, launch, close, and restart their own polls |
+| `invitee` | yes | Vote, view results, and currently can also create polls because `PollPolicy@create` allows any authenticated user |
+| guest account | claimable user row | Created through public vote by email with `role=invitee` and `is_guest=true` |
+
+Open decision: whether all authenticated invitees should continue to create polls, or whether the product needs a stricter default-role/elevation policy.
 
 ## Authorization
 
-Enforced server-side with **Gates + Policies**; never trust the client. The prototype's `RoleSelector` dropdown is gone — capability is determined by the authenticated user's role.
+Authorization is server-side:
 
-- **Route middleware** for coarse gating, e.g. an `EnsureUserHasRole` middleware (`->middleware('role:admin')`) on the admin control routes, defined in `bootstrap/app.php` middleware aliases.
-- **Policies** for per-resource decisions (`PollPolicy`, `VotePolicy` in [`04-backend.md`](04-backend.md)) — ownership and poll-state checks.
-- **Frontend mirroring (UX only).** Pages hide controls the user can't use by reading `auth.user.role` from the shared props. This is convenience, not security; the server re-checks every mutation.
+- `EnsureUserHasRole` handles coarse route gating.
+- `PollPolicy` handles resource decisions.
+- `VoteService` and vote policy checks enforce vote state/dedupe rules.
+- UI visibility is convenience only; every mutation must be protected server-side.
 
-```php
-// app/Http/Middleware/EnsureUserHasRole.php (sketch)
-public function handle(Request $request, Closure $next, string ...$roles): Response {
-    abort_unless($request->user() && in_array($request->user()->role->value, $roles), 403);
-    return $next($request);
-}
-```
+Current policy baseline:
 
-## Shared auth context to the frontend
+- Create poll: any authenticated user.
+- View poll: any authenticated user who reaches it.
+- Update/launch: owning creator or admin.
+- Delete: admin only.
+- Close/restart: owning creator or admin.
+- Add time/control: admin only.
+- Cast vote: active poll and dedupe rules must pass.
 
-`HandleInertiaRequests::share()` exposes the current user (and flash) to every page, matching `SharedProps` in [`05-frontend.md`](05-frontend.md):
+## Public Guest Voting
 
-```php
-public function share(Request $request): array {
-    return array_merge(parent::share($request), [
-        'auth' => ['user' => $request->user()?->only('id','name','email','role','avatar_text','avatar_bg_color')],
-        'flash' => ['success' => fn () => $request->session()->get('success'),
-                    'error'   => fn () => $request->session()->get('error')],
-    ]);
-}
-```
+Public guest voting lives in [`modules/public-sharing.md`](modules/public-sharing.md). It is not anonymous in the data model: the vote is attached to a user row created or found by email.
 
-## Broadcast channel authorization
+Abuse controls still needed:
 
-Live poll channels are **private** so only authenticated, eligible users receive vote streams. Channel auth lives in `routes/channels.php` and is detailed in [`07-realtime.md`](07-realtime.md) — at minimum, any authenticated user may listen to a poll they can see.
+- [ ] Verify public vote rate limits under realistic traffic.
+- [ ] Decide whether claimable guest accounts require email verification before account upgrade.
+- [ ] Decide if magic-link flow replaces, complements, or wraps public guest voting.
+
+## Broadcast Channels
+
+Private authenticated channel:
+
+- `private-poll.{id}` equivalent in Laravel channel naming through `PrivateChannel("poll.{id}")`.
+
+Public channel:
+
+- `poll.{id}` supports public guest/results pages.
+
+If private/invite-only polls become a product requirement, channel authorization and public routes must be tightened together.
