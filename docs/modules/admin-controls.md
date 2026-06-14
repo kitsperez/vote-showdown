@@ -1,57 +1,60 @@
-# Module · Admin Controls (Showrunner)
+# Module - Admin Controls (Showrunner)
 
-> Vertical slice. Part of the [source of truth](../README.md). Cross-refs: auth [`../06-auth-and-roles.md`](../06-auth-and-roles.md), backend [`../04-backend.md`](../04-backend.md), real-time [`../07-realtime.md`](../07-realtime.md).
+> Vertical slice. Cross-refs: auth [`../06-auth-and-roles.md`](../06-auth-and-roles.md), backend [`../04-backend.md`](../04-backend.md), realtime [`../07-realtime.md`](../07-realtime.md).
 
 ## Responsibility
 
-Run-time control of a live show, **admin-only**. Ports the prototype's `handleClosePoll`, `handleRestartPoll`, `handleAddSeconds`, the voter log, and the settings/reset actions — replacing every `alert()` and client-only state mutation with server actions + broadcasts.
+Runtime control of a live poll: close, add time, restart, and eventually audit voters/settings. Production actions mutate server state through controllers/services and broadcast status changes.
 
-## Capabilities
+## Current Capability Matrix
 
-| Action | Prototype origin | Effect |
+| Action | Current authority | Effect |
 |---|---|---|
-| **Close now** | `handleClosePoll` | `status=ended`, `ends_at=now`; broadcast `PollStatusChanged`; screens flip to results |
-| **Add time** | `handleAddSeconds` | `ends_at += {30,60}s`; re-broadcast timer |
-| **Restart / new round** | `handleRestartPoll` | delete this poll's votes, `status=active`, fresh `ends_at`; broadcast |
-| **Voter log / audit** | voters tab in `App.tsx` | paginated table of votes (user, choice, time) |
-| **Reset app state** | settings tab in `App.tsx` | re-seed to defaults — **dev/staging only**, guarded |
-
-## Authorization
-
-- Route group `polls/{poll}/control/*` behind `auth` + `role:admin` middleware ([`../06-auth-and-roles.md`](../06-auth-and-roles.md)) **and** `PollPolicy@control`.
-- Creators do **not** get these; the frontend hides the controls by reading `auth.user.role`, but the server is the enforcer.
+| Close now | Owning creator or admin | `status=ended`, `ends_at=now`, broadcast `PollStatusChanged` |
+| Add time | Admin only | Extend `ends_at` by 30 or 60 seconds, broadcast `PollStatusChanged` |
+| Restart / new round | Owning creator or admin | Delete votes transactionally, reactivate poll, refresh `ends_at`, broadcast |
+| Delete poll | Admin only | Delete poll and related records |
+| Scheduled auto-end | System scheduler | Close expired active polls and broadcast |
+| Voter audit page | Pending | Paginated vote log across relevant polls |
+| Product settings page | Pending/decision needed | Decide whether to build or retire prototype settings concept |
 
 ## Backend
 
-- `Admin\ShowControlController` → `close` / `addSeconds` / `restart`, each delegating to `PollService` (see [`../04-backend.md`](../04-backend.md)) and returning `back()->with('success', …)`.
-- `addSeconds` validates `seconds` ∈ {30, 60}.
-- `restart` deletes votes in a transaction before re-activating (so the tally truly resets, unlike the prototype which just zeroed an in-memory count).
+- `Admin\ShowControlController@close`
+- `Admin\ShowControlController@addSeconds`
+- `Admin\ShowControlController@restart`
+- `PollService::close`
+- `PollService::addSeconds`
+- `PollService::restart`
+- `routes/console.php` scheduled auto-end sweeper
 
-### Scheduled auto-end `[new]`
+`addSeconds` validates `seconds` in `{30, 60}`. `restart` deletes votes inside the service transaction before reactivating the poll.
 
-Server-authoritative expiry needs a sweeper so polls end even with no further traffic:
+## Authorization
 
-```php
-// routes/console.php (or a command) — runs via `php artisan schedule:work`
-Schedule::call(function () {
-    Poll::where('status', PollStatus::Active)
-        ->whereNotNull('ends_at')->where('ends_at', '<=', now())
-        ->each(fn (Poll $p) => app(PollService::class)->close($p));
-})->everyMinute();
-```
+Current policy baseline:
 
-Each auto-close broadcasts `PollStatusChanged`, flipping connected screens to results. (Referenced from [`../07-realtime.md`](../07-realtime.md).)
+- `PollPolicy@close`: owning creator or admin.
+- `PollPolicy@restart`: owning creator or admin.
+- `PollPolicy@control`: admin only, currently used for add-time.
+- `PollPolicy@delete`: admin only.
+
+This is intentionally different from the older "all controls admin-only" plan. The current product state allows creators to close and restart their own polls while reserving cross-poll moderation and add-time for admins.
 
 ## Frontend
 
-- Control buttons live in `ShowrunnerLayout`/`AdminDashboard`, rendered only for admins. Each is an Inertia `router.post(route('polls.control.close', poll.id))` etc. — no `alert()`; success surfaces through the `flash`→`Toast` path.
-- `pages/Admin/Voters.tsx` — the audit table (ported from the inlined voters tab), now paginated from the server.
+Controls are exposed on the authenticated poll show/manage surface according to permissions returned by the backend (`canControl`, `canRestart`, `canClose`, `canEdit`, `canDelete`). Success/error feedback uses flash/toast.
 
-## Acceptance criteria
+## Acceptance Criteria
 
-- [ ] Only admins can close / add time / restart; creators & invitees get 403 and don't see the controls.
-- [ ] Close, add-time, and restart each broadcast `PollStatusChanged`; other clients react live.
-- [ ] Restart removes prior votes (tally returns to zero) within a transaction.
-- [ ] Scheduled sweeper auto-ends expired active polls and broadcasts the change.
-- [ ] "Reset app state" is unavailable in production.
-- [ ] No `alert()` calls remain anywhere.
+- [x] Owner/admin can close a poll.
+- [x] Owner/admin can restart a poll.
+- [x] Admin can add time.
+- [x] Admin-only delete is enforced.
+- [x] Close, add-time, restart, and scheduled expiry broadcast `PollStatusChanged`.
+- [x] Restart removes prior votes transactionally.
+- [x] Scheduled sweeper auto-ends expired active polls.
+- [~] Production feedback uses flash/toast; keep checking touched pages for leftover prototype `alert()` behavior.
+- [ ] Dedicated voter audit page exists.
+- [ ] Product settings/admin page decision is closed.
+- [ ] Control action rate limits are reviewed and tightened where needed.

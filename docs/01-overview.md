@@ -1,56 +1,71 @@
-# 01 · Overview
+# 01 - Overview
 
-> Part of the [Vote Showdown source of truth](README.md). Prototype context: [`../CLAUDE.md`](../CLAUDE.md).
+> Part of the [Vote Showdown source of truth](README.md).
 
 ## Product
 
-**Vote Showdown** is a high-energy, real-time polling app with a game-show ("showdown") feel. Three personas drive it:
+**Vote Showdown** is a high-energy real-time polling app with a game-show feel: bright cartoony Neo-Brutalist UI, live tallies, QR/public voting, and countdown/deadline poll endings.
 
-- **Creator** — designs polls (title, description, 2–10 options, single/multiple choice, duration) and launches them.
-- **Admin / Showrunner** — oversees the running show: controls the countdown timer, adds time, closes a poll early, resets state, and audits the voter log.
-- **Invitee / Voter** — joins an active poll and casts a vote; sees the live tally race.
+Personas:
 
-The signature experience is the **live tally**: as votes land, every connected screen updates instantly, a ticker scrolls recent voters, and a server-authoritative countdown ends the poll automatically.
+- **Creator** - creates, edits, launches, closes, and restarts their own polls.
+- **Admin / Showrunner** - moderates across polls, adds time, deletes polls, and oversees the live show.
+- **Invitee / Voter** - votes through authenticated or public guest flows and watches the live tally.
 
-## Where we are vs. where we're going
+The signature experience is the live tally race: votes land, connected screens update, recent voters tick in, and the server-authoritative timer ends the poll.
 
-| Concern | Prototype today (`src/`) | Production target |
-|---------|--------------------------|-------------------|
-| State | In-memory React state in `App.tsx` | MySQL via Laravel + Eloquent |
-| Persistence | None (refresh = reset) | Durable, multi-user |
-| "Live" votes | Fake `setInterval` simulator | Real `VoteCast` broadcasts over Reverb |
-| Routing | State flags (`currentRole`, `adminTab`) | Inertia pages + real URLs |
-| Auth | None (role is a dropdown) | Laravel auth, role enum, policies |
-| Timer | Client `setInterval` on `timerSeconds` | Server `ends_at`; client renders remaining time |
-| Feedback | `alert()` calls | Inertia flash messages + toasts |
+## Current Baseline
 
-## Stack decisions & rationale
+The project is no longer only a client-side prototype. The Laravel/Inertia production scaffold exists and the core polling flow is implemented.
 
-| Layer | Choice | Why |
-|-------|--------|-----|
-| Backend | **Laravel 12 (PHP 8.3+)** | Batteries-included: auth, validation, queues, broadcasting, Eloquent. Fits the Laragon/Windows dev environment already in use. |
-| Frontend | **React 19 + TypeScript** | Carry over the existing component code with minimal rewrites. |
-| Glue | **Inertia.js v2 (React adapter)** | Server-driven routing & data with a SPA feel, **no separate API to build or version**. Controllers pass typed props straight into pages. |
-| Build | **Vite 6** | Already configured; Laravel's `laravel-vite-plugin` slots in alongside the existing React + Tailwind plugins. |
-| Styling | **Tailwind CSS v4** | Keep the prototype's brutalist look 1:1 (see `../CLAUDE.md`). |
-| Database | **MySQL 8** | Asked for; relational shape fits polls→options→votes cleanly. |
-| Real-time | **Laravel Reverb + Laravel Echo** | First-party, self-hosted WebSocket server; no third-party cost; native broadcasting integration. |
-| Queue | **Database driver** (dev) → Redis (prod) | Broadcast events and tally recomputation run off the request cycle. |
+| Concern | Current production state |
+|---|---|
+| State/persistence | MySQL through Laravel/Eloquent |
+| Frontend | Inertia React pages under `resources/js` |
+| Design reference | Frozen prototype under `src/` |
+| Voting | Authenticated voting and public guest voting |
+| Live updates | Reverb/Echo events for tally, ticker, and status |
+| Timer | Server `ends_at`; frontend countdown is display-only |
+| Feedback | Inertia flash/toast |
+| Tests | Pest feature/unit test structure exists |
 
-## Migration plan (phased)
+## Stack Decisions
 
-Build in vertical slices so the app is runnable after each phase.
+| Layer | Choice |
+|---|---|
+| Backend | Laravel 12 |
+| Frontend | React 19 + TypeScript |
+| Glue | Inertia.js v2 |
+| Database | MySQL 8 |
+| Realtime | Laravel Reverb + Echo |
+| Styling | Tailwind CSS v4 |
+| Build | Vite 6 |
+| Production target | Forge/VPS with Redis, Supervisor, queue, scheduler, Reverb |
 
-1. **Phase 0 — Scaffold `[infra]`.** Install Laravel into this repo, wire the existing Vite/React/Tailwind config into Laravel's pipeline, set up Inertia + the React starter, configure MySQL & `.env`. See [`02-architecture.md`](02-architecture.md).
-2. **Phase 1 — Data & auth.** Migrations, models, seeders ([`03-database.md`](03-database.md)); login/register with the three roles ([`06-auth-and-roles.md`](06-auth-and-roles.md)).
-3. **Phase 2 — Poll management.** Creator can build/launch polls; lifecycle (draft→active→ended). [`modules/poll-management.md`](modules/poll-management.md).
-4. **Phase 3 — Voting (persisted).** Invitee casts a real, deduped vote; tallies read from DB. [`modules/voting.md`](modules/voting.md).
-5. **Phase 4 — Real-time.** Reverb + Echo; replace the simulator with live `VoteCast` broadcasts; server-authoritative timer. [`07-realtime.md`](07-realtime.md).
-6. **Phase 5 — Dashboard, admin controls & analytics.** Live metrics, results tally, voter log, close/reset/add-time. [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md), [`modules/admin-controls.md`](modules/admin-controls.md).
-7. **Phase 6 — Hardening.** Tests (Pest), rate limiting on voting, authorization coverage, production queue/broadcast config.
+## Roadmap From Here
 
-## Non-goals (for now)
+Completed or mostly completed:
 
-- No native/mobile apps (responsive web only — the prototype already targets this).
-- No AI features. `@google/genai` from the prototype is dropped unless a concrete use case appears.
-- No multi-tenancy/orgs; a flat user base with roles is sufficient.
+- Laravel/Inertia scaffold.
+- Data model, auth starter, roles, policies, services, presenters.
+- Poll management, voting, public guest voting, QR/share, realtime events, password gates, end modes, option media fields.
+- Dashboard and poll show surfaces.
+
+Remaining:
+
+- Magic-link / one-tap invitee voting decision and implementation.
+- Canonical QR target decision.
+- Engagement-rate formula decision.
+- Dedicated voter audit/log page and product settings decision.
+- Live Reverb two-browser and burst/load verification.
+- Option image upload/render verification.
+- CI gates, enum/type drift test, accessibility pass, and deployment hardening.
+
+See [`09-execution-checklist.md`](09-execution-checklist.md) for the tactical checklist.
+
+## Non-Goals For Now
+
+- Native/mobile apps.
+- AI features.
+- Multi-tenant organizations.
+- Separate REST API for page data.

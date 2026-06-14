@@ -1,201 +1,175 @@
-# 09 · Execution Checklist
+# 09 - Execution Checklist
 
-> The single, ordered, do-this-next list for building Vote Showdown. Each item links to its spec. Hardening fixes (risk IDs `R1–R8`, `H/M`) are embedded at the phase where they land. Gate each phase on its **Exit criteria** before moving on. Don't start an item that fails the [Definition of Ready](08-delivery-plan.md#definition-of-ready-a-ticket-may-start-only-if).
+> The single ordered checklist for Vote Showdown. Legend: `[ ]` todo, `[~]` in progress, `[x]` done.
+>
+> **Audit baseline:** Updated from the current codebase on 2026-06-12. This update reconciles docs to implementation only; tests/builds were not rerun during the documentation update.
 
-Legend: `[ ]` todo · `[~]` in progress · `[x]` done.
+## Current Delivery State
 
-> **Build progress (this session):** Phases 0–3 and most of 4–5 are implemented and verified — **36 Pest tests green**, `tsc --noEmit` clean, `npm run build` succeeds, app boots (welcome/login 200, guarded routes redirect), DB seeded (3 polls, 200 demo voters, real vote rows). Laravel 12 + Inertia v2 + React 19 + Reverb scaffolded via the React starter kit. Remaining: magic-link voting (D2), the voter audit page + settings, Forge deploy (Phase 6), and CI wiring. Code lives on branch `feat/laravel-scaffold` (uncommitted).
+- [x] Laravel 12 + Inertia v2 + React 19 production scaffold exists.
+- [x] Original `src/` prototype is preserved as frozen design reference.
+- [x] Production UI has moved to `resources/js/` and styling to `resources/css/app.css`.
+- [x] Core poll lifecycle, voting, guest voting, QR sharing, countdown/deadline endings, password gates, option media fields, Reverb events, and scheduled auto-end are implemented.
+- [~] Dashboard/admin surfaces are partially implemented: dashboard and controls exist; dedicated voter audit/settings surfaces still need product completion.
+- [~] Realtime is implemented in code but still needs live multi-browser/Reverb/load verification.
+- [ ] Magic-link / one-tap invitee voting remains pending; current low-friction voter path is public guest voting by email.
+- [ ] CI, Forge/VPS deployment, Redis production hardening, accessibility pass, and final release smoke tests remain pending.
 
----
+## Phase -1 - Repo Cleanup
 
-## Phase −1 · Repo cleanup ✅ (done)
+- [x] Remove AI Studio artifacts that should not ship.
+- [x] Replace AI Studio README with project README.
+- [x] Keep `src/` as frozen design reference.
+- [x] Document design reference in [`design-reference.md`](design-reference.md).
+- [x] Drop prototype-only `@google/genai` dependency.
+- [x] Replace prototype-only Vite assumptions with Laravel/Inertia scaffold assumptions.
 
-- [x] Remove `assets/` (AI Studio `.aistudio` artifact)
-- [x] Remove `metadata.json` (AI Studio applet manifest)
-- [x] Remove `.env.example` (Gemini/AI Studio env — Laravel will regenerate)
-- [x] Replace AI Studio `README.md` with a real project README
-- [x] Confirm `src/` is **kept** as frozen design reference ([`design-reference.md`](design-reference.md))
-- [ ] Decide: lock these plans (this checklist) before any code — **you are here**
+## Phase 0 - Laravel/Inertia Scaffold
 
-> Deferred to Phase 0 (these files are still useful references until then): drop `@google/genai` from `package.json`, remove the `DISABLE_HMR` block from `vite.config.ts`, replace `index.html` with Laravel's Blade entry.
+- [x] Scaffold Laravel 12 + React/Inertia/TypeScript starter at repo root.
+- [x] Install and wire Inertia, Ziggy, Laravel Vite plugin, React 19, Tailwind v4, and Vite 6.
+- [x] Install and configure Reverb/Echo client dependencies.
+- [x] Flip `@/*` alias to `resources/js`.
+- [x] Port prototype theme tokens to `resources/css/app.css`.
+- [x] Add Laravel auth/settings starter pages.
+- [x] Add Pest test framework.
+- [~] Local dev orchestration exists through `composer dev`, but it currently runs Laravel server, queue listener, and Vite only; add Reverb and scheduler processes when live testing becomes the next focus.
+- [ ] Re-run and record current `php artisan test`, `npm run build`, and TypeScript verification before the next implementation phase.
 
----
+## Phase 1 - Data & Auth
 
-## Phase 0 · Scaffold ✅ done `[infra]` — spec: [`02-architecture.md`](02-architecture.md)
+- [x] Add `UserRole` and `PollStatus` PHP enums.
+- [x] Add mirrored TypeScript model contracts in `resources/js/types/models.ts`.
+- [x] Add users, polls, poll options, votes, guest, password, ending, and option media schema support.
+- [x] Add models, relationships, casts, factories, and seeders.
+- [x] Add Laravel auth flows from the starter kit.
+- [x] Add role middleware and shared Inertia auth/flash context.
+- [x] Add claimable guest user model via `users.is_guest`.
+- [ ] Magic-link / one-tap invitee flow: signed temporary route, lightweight invitee account/session, direct landing on voting page.
+- [ ] Finalize and document new-signup default-role policy.
 
-Strategy: **fresh Laravel skeleton on a branch, then port** — never install Laravel over the existing root (risk R4).
+## Phase 2 - Poll Management
 
-- [ ] Create branch `feat/laravel-scaffold`
-- [ ] Scaffold **Laravel 12 + React/Inertia/TS starter** in a clean skeleton
-- [ ] Copy `src/` into the repo as frozen reference; port code into `resources/js`
-- [ ] Merge `package.json`: keep `lucide-react`, `motion`, `tailwindcss`; **drop `@google/genai`**
-- [ ] Merge Vite config (laravel-vite-plugin + React + Tailwind v4); **remove `DISABLE_HMR` block**
-- [ ] Port `src/index.css` `@theme` (Quicksand / Space Mono) → `resources/css/app.css`
-- [ ] **Flip `@` alias → `resources/js` in `tsconfig.json` + `vite.config.ts` together** (risk M2)
-- [ ] Install & wire **Ziggy** so `route()` works in TS (risk H1)
-- [ ] Install broadcasting + Echo (`php artisan install:broadcasting`); add **socket-id axios interceptor** (risk R3)
-- [ ] Configure MySQL `.env` (`DB_*`); set `BROADCAST_CONNECTION=reverb`, `QUEUE_CONNECTION=database`, `REVERB_*`, `VITE_REVERB_*`
-- [ ] Add `composer dev` orchestrator: serve + vite + `reverb:start` + `queue:work` + `schedule:work` (5 processes)
-- [ ] **Exit:** `npm run build`, `tsc --noEmit`, and `php artisan test` all green; app boots; a trivial Inertia page renders
+- [x] Add `StorePollRequest` and `UpdatePollRequest`.
+- [x] Enforce 2-10 options and countdown/deadline validation.
+- [x] Add optional access password validation/storage.
+- [x] Add option image/icon validation/storage fields.
+- [x] Add `PollPolicy` for create, view, update, launch, delete, close, restart, and control.
+- [x] Add `PollService::create`, `update`, `launch`, `close`, `addSeconds`, `restart`, and `settleIfExpired`.
+- [x] Enforce one active poll per creator when launching.
+- [x] Add poll index/create/show/edit/update/delete routes and pages.
+- [x] Add shared poll form for create/edit.
+- [x] Add admin-only delete; owner-or-admin edit/close/restart; admin-only add-time.
+- [ ] Verify option image upload end to end with `php artisan storage:link` in the local environment.
 
----
+## Phase 3 - Voting
 
-## Phase 1 · Data & Auth ✅ mostly done (magic-link pending) `[new]` — spec: [`03-database.md`](03-database.md), [`06-auth-and-roles.md`](06-auth-and-roles.md)
+- [x] Add authenticated vote request/controller path.
+- [x] Enforce active poll and dedupe rules through policy/service checks.
+- [x] Use atomic per-user-per-poll `Cache::lock` for single-choice race protection.
+- [x] Derive tallies from the `votes` table.
+- [x] Rate-limit authenticated vote endpoint.
+- [x] Add password-gate enforcement before vote casting.
+- [x] Add public guest vote request/controller path.
+- [x] Reuse `VoteService::cast` for guest votes.
+- [ ] Add or confirm tests for public password-protected guest voting.
 
-- [ ] Enums: `UserRole`, `PollStatus` (+ mirror TS unions in `resources/js/types/models.ts`)
-- [ ] Migrations (in FK order): `users` (+`role`, `avatar_*`, **`is_demo`** R3/M1), `polls`, `poll_options`, `votes` (with `UNIQUE(poll_id, poll_option_id, user_id)`)
-- [ ] Models + relations + casts (`User`, `Poll`, `PollOption`, `Vote`); `Poll::isActive/hasExpired/remainingSeconds` (**Carbon-3-safe**, risk R8)
-- [ ] Factories with role/status states
-- [ ] Seeders: `UserSeeder` (one per role), `DefaultPollsSeeder` (ports `src/data.ts`; demo voters tagged `is_demo`, local/staging only — M1)
-- [ ] Auth via starter kit (login/register/verify/reset)
-- [ ] `EnsureUserHasRole` middleware + alias
-- [ ] **Magic-link / one-tap voting** flow (signed temporary route → lightweight invitee account → Vote page) (decision D2)
-- [ ] `HandleInertiaRequests` shares `auth.user` + `flash`
-- [ ] **Decide (open):** new-signup default-role policy; magic-link account model (full row vs claimable guest)
-- [ ] **Exit:** each role can log in; role middleware blocks the wrong role (403); magic link logs in an invitee and lands them on a Vote page
+## Phase 4 - Realtime
 
----
+- [x] Add `VoteCast`, `VoterTicked`, and `PollStatusChanged` broadcast events.
+- [x] Broadcast tally, ticker, and status to private authenticated channels.
+- [x] Broadcast public poll events for guest/results pages.
+- [x] Add `routes/channels.php` private poll channel authorization.
+- [x] Add `usePollChannel`, `usePublicPollChannel`, and `useCountdown` hooks.
+- [x] Coalesce tally broadcasts and keep per-vote ticker events.
+- [x] Keep vote persistence tolerant of unreachable broadcasting.
+- [ ] Verify socket-id forwarding prevents duplicate acting-user updates.
+- [ ] Run live two-browser Reverb test for authenticated and public pages.
+- [ ] Run burst/load test and tune coalescing window if needed.
+- [ ] Confirm degraded/polling fallback behavior when Reverb is unavailable.
 
-## Phase 2 · Poll Management ✅ done `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md)
+## Phase 5 - Dashboard, Admin & Analytics
 
-- [ ] `StorePollRequest` (2–10 options; duration in {45,90,120,180})
-- [ ] `PollPolicy` (`create`/`update`/`launch`/`delete`/`control`)
-- [ ] `PollService::create` (transactional poll+options)
-- [ ] `PollService::launch` — ends only the **same creator's** active poll (decision D1); sets `ends_at`; fires `PollStatusChanged`
-- [ ] `PollService::close` / `restart` (restart deletes votes in a transaction)
-- [ ] `PollController` (`index`/`create`/`store`/`show`/`update`/`destroy`) + routes
-- [ ] Rate-limit poll creation (risk M4)
-- [ ] Pages: `Polls/Create` (port `PollCreatorView`), `Polls/Index`; `ShowrunnerLayout` (port sidebar/header)
-- [ ] **Exit:** creator builds+launches a draft; launching ends only their own prior active poll; non-owner gets 403; option colors round-trip
+- [x] Add role-aware `DashboardController`.
+- [x] Add dashboard page with active poll, recent polls, and metrics props.
+- [x] Add poll show page with live tally/results, voters, QR/share, and management controls.
+- [x] Add close, add-time, and restart controls through `ShowControlController`.
+- [x] Add scheduled auto-end sweeper in `routes/console.php`.
+- [x] Replace production action feedback with flash/toast flow.
+- [~] Metrics are real queries, but engagement-rate denominator is still a placeholder/open decision.
+- [ ] Build dedicated voter audit/log page.
+- [ ] Build product-specific settings/admin page, or explicitly retire the old prototype settings tab.
+- [ ] Rate-limit control actions where needed beyond current route protection.
+- [ ] Verify no production page still relies on prototype simulator behavior.
 
----
+## Phase 5b - QR Voting & Public Sharing
 
-## Phase 3 · Voting ✅ done `[new]` — spec: [`modules/voting.md`](modules/voting.md)
+- [x] Add `qrcode.react`.
+- [x] Add public QR join route `GET /polls/{poll}/join`.
+- [x] Add public voting page `GET /p/{poll}`.
+- [x] Add public guest vote route `POST /p/{poll}/vote`.
+- [x] Add public results page `GET /r/{poll}`.
+- [x] Add QR/share component and public results QR flow.
+- [x] Add public guest live updates through public poll channel.
+- [x] Add returning guest `voted_poll_{id}` cookie.
+- [ ] Decide whether `/polls/{poll}/join` should redirect to public guest voting or remain an auth-intended join route.
 
-- [ ] `StoreVoteRequest` + `VotePolicy::cast` (active poll; not already voted per rules)
-- [ ] `VoteService::cast` with **atomic `Cache::lock` per user+poll** (fixes single-choice race, risk R2)
-- [ ] `VoteService::tally` (derived counts via `withCount`)
-- [ ] `VoteController::store` (authorize → service → `back()->with('success')`); `throttle:votes`
-- [ ] Page: `Vote` (port `InviteeView`); `useForm` POST; `hasVoted` state
-- [ ] **Exit:** vote persists & increments tally; concurrent different-option single-choice votes rejected (lock holds); voting a draft/ended/expired poll rejected; multi-choice same-option rejected
+## Phase 5c - Passwords, End Modes, and Option Media
 
----
+- [x] Add countdown and deadline end modes.
+- [x] Resolve both end modes into authoritative `ends_at`.
+- [x] Add optional poll access password and unlock route.
+- [x] Expose password state through `PollPresenter`.
+- [x] Add option image/icon schema, validation, service storage, and presenter fields.
+- [ ] Verify option images render correctly across dashboard, show, public vote, and public results pages.
 
-## Phase 4 · Real-time ✅ implemented (needs live Reverb load test) `[new]` — spec: [`07-realtime.md`](07-realtime.md)
+## Phase 5d - Roles and Guest Parity
 
-- [ ] `php artisan reverb:start` running; channel auth in `routes/channels.php`
-- [ ] Events: `VoteCast` (tally only) + `VoterTicked` (per-vote) + `PollStatusChanged`
-- [ ] `VoteService::broadcastTally` — **coalesce tally ≤4/s, ticker per-vote** (risk R1); all use `->toOthers()`
-- [ ] Verify socket-id forwarding makes acting voter's tally move **exactly once** (risk R3)
-- [ ] Hooks: `usePollChannel` (tally/ticker/status), `useCountdown` (display over server `ends_at`)
-- [ ] **Degraded mode:** Echo-down → poll fallback `router.reload({ only: [...] })` (risk R6)
-- [ ] Delete the prototype simulator logic entirely
-- [ ] **Exit:** two browsers see live tally + ticker; load test (staging) holds under burst votes; killing Reverb falls back to polling
+- [x] Allow any authenticated user to create polls.
+- [x] Allow owner/admin editing.
+- [x] Restrict delete to admin.
+- [x] Allow owner/admin close and restart.
+- [x] Keep add-time admin-only.
+- [x] Redesign guest page to mirror the authenticated poll experience without sidebar.
+- [ ] Reconcile docs/product language around "invitee", "guest", and future magic-link accounts.
 
----
+## Phase 5e - Theme Polish
 
-## Phase 5 · Dashboard, Admin & Analytics 🔶 partial (controls + dashboard done; voter audit page + settings pending) `[new]` — spec: [`modules/dashboard-and-analytics.md`](modules/dashboard-and-analytics.md), [`modules/admin-controls.md`](modules/admin-controls.md)
+- [x] Force light-only theme.
+- [x] Set brand primary/ring colors.
+- [x] Restyle login/register/welcome with brutalist treatment.
+- [x] Add sidebar links to profile/password settings.
+- [ ] Perform accessibility pass for keyboard navigation, labels, contrast, and focus states.
 
-- [ ] Metrics service: `totalVoters`, `velocityPerMinute`, `engagementRate` (**decide denominator** — open item)
-- [ ] `DashboardController` (role-aware: creator overview / admin Showrunner panel)
-- [ ] Pages: `Dashboard` (port `AdminDashboard`), `Polls/Show` (port `ResultsTally` — winner, bento, confetti, voter feed)
-- [ ] `Admin/ShowControlController` (`close`/`addSeconds`/`restart`) — admin-only; rate-limited
-- [ ] `Admin/Voters` page (paginated audit log); `Settings` page
-- [ ] **Scheduled sweeper** auto-ends expired active polls + broadcasts (risk R8 boundary)
-- [ ] Replace every `alert()` with flash → `Toast`
-- [ ] **Exit:** metrics are real (not random); controls work live for admins only; expired polls auto-flip to results; no `alert()` remains
+## Phase 6 - Hardening & Deploy
 
----
+- [ ] Re-run full Pest suite and record current passing count.
+- [ ] Run `npm run build`.
+- [ ] Run TypeScript verification or confirm build covers TS strictness.
+- [ ] Run lint/format checks.
+- [ ] Add enum-contract drift test as CI gate.
+- [ ] Wire CI gates for PHP tests, frontend build, TypeScript, lint/format, and drift tests.
+- [ ] Verify rate limits on vote, public vote, poll creation, QR join, unlock, and control routes.
+- [ ] Configure production Redis for queue/cache/locks/coalescing.
+- [ ] Configure Forge/VPS, Supervisor, queue worker, Reverb, scheduler, TLS, and MySQL 8.
+- [ ] Run staging smoke test for auth, public voting, QR, password-gated polls, live Reverb, and scheduled expiry.
+- [ ] Verify rollback path.
 
-## Phase 5b · QR voting & deadline polls ✅ implemented `[new]` — spec: [`modules/qr-voting.md`](modules/qr-voting.md), [`modules/poll-management.md`](modules/poll-management.md)
+## Open Decisions
 
-**QR scan-to-vote**
-- [x] Add `qrcode.react` dependency
-- [x] Public, rate-limited `GET /polls/{poll}/join` route + `PollController@join` (authed → show; guest → `redirect()->guest()` → login → back to show)
-- [x] `components/showdown/qr-panel.tsx` rendering `<QRCodeSVG>` of the absolute `polls.join` URL + copy-link
-- [x] QR ("Scan to vote") button on the poll/show page opens the panel (ports the prototype's QR button) · _dashboard placement optional, TODO_
-- [ ] (Later, D2) signed magic-link join variant skips the password step without changing the QR component
+- [ ] Engagement-rate denominator and final dashboard metric formulas.
+- [ ] New-signup default role and elevation policy.
+- [ ] Magic-link account model versus current claimable guest account model.
+- [ ] Whether private/invite-only polls are in scope.
+- [ ] Public QR join target: `/polls/{poll}/join` auth-intended route versus `/p/{poll}` direct guest route.
+- [ ] Production coalescing window after Reverb load test.
 
-**Deadline polls (end_mode)**
-- [x] Migration: `end_mode` enum (`duration`|`deadline`), `duration_seconds` nullable, `deadline_at` timestamp
-- [x] `Poll` casts `deadline_at` datetime; `PollService::launch`/`restart` resolve `ends_at` from end mode
-- [x] `StorePollRequest`: `end_mode` required; `duration_seconds` required_if duration; `deadline_at` required_if deadline + `after:now`
-- [x] Create form: toggle between "Countdown" and "Deadline date/time"
-- [x] **Exit:** verified by Pest — deadline poll launches with `ends_at = deadline_at` (D7), past deadline rejected, countdown unchanged; live timer/auto-end/broadcasts read `ends_at` unchanged
+## Cross-Cutting Guardrails
 
-> Tests: `php artisan test` → **40 passed**. `tsc` clean, `npm run build` succeeds. ⚠️ Dev MySQL reseed pending — start Laragon MySQL then run `php artisan migrate:fresh --seed` to pick up the new poll columns.
-
-## Phase 5c · Public sharing & guest voting ✅ implemented `[new]` — spec: [`modules/public-sharing.md`](modules/public-sharing.md)
-
-- [x] Migration: `users.is_guest` boolean (claimable email-only accounts, D8)
-- [x] `PublicPollController@show` + `@vote` + `@results`; public rate-limited routes `GET /p/{poll}`, `POST /p/{poll}/vote`, `GET /r/{poll}`
-- [x] `StoreGuestVoteRequest` (`poll_option_id`, `email`, optional `name`); resolve/create `is_guest` invitee by email, then reuse `VoteService::cast` (R2 lock holds)
-- [x] `layouts/guest-layout.tsx` (no sidebar) + `pages/public-poll.tsx` (ports `InviteeView`: email + vote, leaderboard) with **polling** liveness
-- [x] `voted_poll_{id}` cookie so returning guests see "already voted"
-- [x] Inline `qr-share.tsx` (not modal); QR encodes the vote URL; shown on backend page side + both guest pages
-- [x] Results-only spectator page `pages/public-results.tsx` (`/r/{poll}`) with a QR linking to the vote page
-- [x] **Live guest updates:** events fan out to a public `poll.{id}` channel; `use-public-poll-channel.ts` drives the results page — voters prepend live + floating **+1** per vote, no refresh (polling backstop kept)
-- [ ] **Exit (pending live check):** logged-out visitor views & votes on `/p/{poll}` (no sidebar, no login); claimable account created; dedupe holds; rate-limited — needs Laragon MySQL up + feature tests
-
-## Phase 5d · Optional poll password `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D9)
-
-- [ ] Migration: `polls.access_password` nullable (hashed)
-- [ ] Create form: optional password field (blank = open)
-- [ ] `POST /polls/{poll}/unlock` verifies password → session flag / signed `poll_unlocked_{id}` cookie; gate enforced server-side before `VoteService::cast` on both authed and public vote paths
-- [ ] Vote UI shows a password gate when locked and not yet unlocked; **no gate when `access_password` is null**
-- [ ] **Exit:** password-protected poll blocks voting until correct password; open poll votes anytime
-
-## Phase 5e · Option images / icons `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D10)
-
-- [ ] Migration: `poll_options.image_path` + `icon` nullable
-- [ ] `php artisan storage:link`; store uploads on the `public` disk
-- [ ] `StorePollRequest`: `options.*.image` (`nullable|image|max:2048`), `options.*.icon` (`nullable|string`)
-- [ ] `PollService::create` saves uploaded images, sets `image_path`; `PollPresenter` exposes `imageUrl`/`icon`
-- [ ] Create form: per-option image upload (Inertia `forceFormData`); option cards render the image/icon in place of the number badge (create + show + public page)
-- [ ] **Exit:** an option with an uploaded image shows that image everywhere the poll renders
-
-## Phase 5f · Poll edit + roles + guest parity ✅ implemented `[new]` — spec: [`modules/poll-management.md`](modules/poll-management.md) (D11/D12)
-
-- [x] `PollPolicy`: `update` (owner or admin), `delete` (**admin only**), `close` (owner or admin), `control` (admin only)
-- [x] Routes: `polls.edit` / `polls.update` (PUT/PATCH), `polls.control.close` moved out of the admin-only group
-- [x] `UpdatePollRequest` + `PollService::update` (resync options only when no votes; else edit-in-place)
-- [x] Shared `components/showdown/poll-form.tsx` used by both `create` and new `edit` page
-- [x] Show page exposes `canEdit`/`canClose`/`canDelete`; "Manage" panel renders Edit / Close / add-time / restart / Delete by permission
-- [x] Guest page redesigned to mirror `/polls/{id}` (main tally/voting + side QR & voters), minus sidebar (D12)
-- [x] Verified by Pest — 50 tests pass (owner & admin edit; non-owner forbidden; delete admin-only; creator can close own)
-
-## Phase 5g · Open creation + theme polish ✅ implemented `[new]` (D13/D14)
-
-- [x] `PollPolicy@create` → any authenticated user; create UI ungated (layout, dashboard, polls index) — verified by Pest (invitee can create)
-- [x] Force light-only theme (`use-appearance` never applies `dark`); `--primary`/`--ring` = brand pink
-- [x] Restyled `login` + `register` to brutalist inputs/buttons; brand-colored `TextLink`; brutalist `auth-simple-layout` + welcome
-- [x] Sidebar links to **Edit profile** (`profile.edit`) and **Change password** (`password.edit`)
-
-## Phase 6 · Hardening & Deploy `[infra]` — spec: [`08-delivery-plan.md`](08-delivery-plan.md)
-
-- [ ] Pest coverage per module acceptance criteria (create/launch/vote/dedupe/authz)
-- [ ] **Enum-contract drift test** (PHP enums == TS unions) as a CI gate (risk M5)
-- [ ] Rate limits verified on votes, poll creation, control actions, magic-link issuance (risk R4/R5)
-- [ ] Accessibility pass (keyboard nav, contrast, labels)
-- [ ] CI gates wired: `php artisan test` · `npm run build` · `tsc --noEmit` · drift test
-- [ ] **Forge + VPS** provisioning (decision D4): Supervisor for `reverb:start`/`queue:work`/scheduler; Redis; `wss://` TLS; MySQL 8 (risk R6)
-- [ ] Staging smoke test of broadcasting over real WS; rollback verified
-- [ ] **Exit:** green CI; staging mirrors prod; one-click rollback works → production go-live
-
----
-
-## Cross-cutting guardrails (apply on every ticket)
-
-- [ ] Authorization enforced **server-side** (policy/role), not just hidden in UI
-- [ ] Inputs validated in a FormRequest; never trust client-sent counts/state
-- [ ] No `alert()`, no leftover mock/simulator for the touched feature
-- [ ] Update the relevant `docs/` if the contract (enums/types/routes) changes
-- [ ] Keep the **cartoony Neo-Brutalist** look sourced from the matching `src/` file ([`design-reference.md`](design-reference.md))
-
-## Open decisions to close (owners in [`08-delivery-plan.md`](08-delivery-plan.md))
-
-- [ ] Engagement-rate denominator (by Phase 5)
-- [ ] New-signup default-role policy (by Phase 1)
-- [ ] Magic-link account model: full row vs claimable guest (by Phase 1/3)
-- [ ] Tally-coalescing window tuning (by Phase 4 load test)
-- [ ] Private/invite-only polls? (would tighten channel auth + Vote access)
+- [ ] Authorization enforced server-side through policies/middleware.
+- [ ] Inputs validated in FormRequests.
+- [ ] Tallies derived from DB rows, never trusted from client state.
+- [ ] No production feature depends on mock/prototype simulator state.
+- [ ] Flash/toast for production feedback; no new production `alert()` calls.
+- [ ] Docs updated in the same change as feature/schema/route/convention changes.
+- [ ] Design stays aligned to [`design-reference.md`](design-reference.md) and the frozen `src/` prototype.
