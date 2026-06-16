@@ -14,7 +14,7 @@ export default function PollsEdit({ poll, hasVotes }: { poll: Poll; hasVotes: bo
                 method="put"
                 submitUrl={route('polls.update', poll.id)}
                 submitLabel="Save changes"
-                lockOptionStructure={hasVotes}
+                protectExistingOptions={hasVotes}
                 initial={{
                     title: poll.title,
                     description: poll.description ?? '',
