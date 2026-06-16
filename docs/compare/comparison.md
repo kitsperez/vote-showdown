@@ -4,6 +4,13 @@
 > **Date:** 2026-06-16
 > **Purpose:** Compare the uploaded `docs/compare/` document set against the current source-of-truth docs (`docs/README.md`, `docs/08-delivery-plan.md`, `docs/09-execution-checklist.md`) and identify which **modules, plans, and automation/agents** are worth adopting into the current build — and which to explicitly reject.
 > **Status:** Review only. No code or doc-of-record changes made.
+>
+> **Update (2026-06-16):** Following this review, the decision was made to keep the source-of-truth
+> stack unchanged. The other files in this folder have since been **rewritten in place to match our
+> actual stack** (Inertia/Reverb/`voter_key`/UUID/roles) — so they now read as adapted secondary
+> references, not the original "QR Voting Application" spec. This document's "compare set" descriptions
+> below reflect the **original** uploaded versions and are kept as the record of what was adopted vs.
+> rejected and why. The numbered docs in [`../`](../) remain canonical.
 
 ---
 

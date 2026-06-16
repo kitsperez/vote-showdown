@@ -1,309 +1,124 @@
 # QA Test Plan
-# QR Voting Application
+# Vote Showdown
 
-**Version:** 1.0
-
----
-
-## 1. Testing Scope
-
-This plan covers all MVP features. Each module has functional, edge case, and negative tests.
+> **Realigned to the source of truth.** Rewritten for the actual stack: assertions target
+> **Inertia** responses/redirects/flash/props (not REST/JSON), the **`voter_key`** dedupe model,
+> **UUID** routes, and **Reverb**. Automated tests use **Pest**; browser/realtime checks are manual;
+> load testing uses an external tool (k6) driven by the `load-test-agent` (not added to the stack).
+> The `qa-test-plan-agent` (`.claude/agents/`) can regenerate this catalog against current code.
 
 ---
 
-## 2. Test Types
+## 1. Test Types
 
 | Type | Tool | Who |
 |---|---|---|
-| Unit tests (backend) | PHPUnit / Pest | Developer |
-| Feature tests (API) | PHPUnit / Pest | Developer |
-| Component tests (frontend) | Vitest + RTL | Developer |
-| E2E tests | Playwright | Developer / QA |
-| Manual QA | Browser | QA / Developer |
-| Load testing | k6 | Developer |
+| Feature tests (HTTP/Inertia) | Pest | Developer |
+| Unit tests (services/logic) | Pest | Developer |
+| Frontend verification | ESLint + TypeScript via `npm run build` | Developer |
+| Manual QA (browser, realtime, QR) | Browser / device | Dev / QA |
+| Load testing | k6 (external CLI) via `load-test-agent` | Dev |
+
+> No Vitest/Playwright in the current stack. Component-level coverage is via build/type-checking and
+> manual QA until a frontend test runner is explicitly adopted.
 
 ---
 
-## 3. Authentication
-
-### TC-AUTH-01: Valid Login
-- **Input:** Correct email and password
-- **Expected:** Returns 200 with token and admin object
-
-### TC-AUTH-02: Invalid Password
-- **Input:** Correct email, wrong password
-- **Expected:** Returns 401 with error message
-
-### TC-AUTH-03: Non-Existent Email
-- **Input:** Email not in database
-- **Expected:** Returns 401 (do not reveal whether email exists)
-
-### TC-AUTH-04: Rate Limiting on Login
-- **Input:** 6+ login attempts in one minute from same IP
-- **Expected:** 6th request returns 429
-
-### TC-AUTH-05: Forgot Password with Valid Email
-- **Input:** Registered admin email
-- **Expected:** Returns 200, email is sent with reset link
-
-### TC-AUTH-06: Forgot Password with Unknown Email
-- **Input:** Email not in database
-- **Expected:** Returns 200 (do not reveal whether email exists)
-
-### TC-AUTH-07: Password Reset with Valid Token
-- **Input:** Valid reset token + matching passwords
-- **Expected:** Returns 200, password is updated
-
-### TC-AUTH-08: Password Reset with Expired Token
-- **Input:** Token older than 60 minutes
-- **Expected:** Returns 422 with token expired message
-
-### TC-AUTH-09: Logout
-- **Input:** Valid Bearer token
-- **Expected:** Returns 200, token is revoked, subsequent requests with same token return 401
-
-### TC-AUTH-10: Access Admin Route Without Token
-- **Input:** GET /admin/polls with no Authorization header
-- **Expected:** Returns 401
-
----
-
-## 4. Poll Creation
-
-### TC-POLL-01: Create Valid Single-Choice Poll
-- **Input:** Title, type: single, 3 valid options
-- **Expected:** Returns 201 with poll object including room_code, voting_url, and qr_code_url
-
-### TC-POLL-02: Create Valid Multiple-Choice Poll
-- **Input:** Title, type: multiple, 5 options
-- **Expected:** Returns 201
-
-### TC-POLL-03: Create Poll with 1 Option
-- **Input:** Only 1 option in options array
-- **Expected:** Returns 422 with validation error
-
-### TC-POLL-04: Create Poll with 11 Options
-- **Input:** 11 options in options array
-- **Expected:** Returns 422 with validation error
-
-### TC-POLL-05: Create Poll with Empty Title
-- **Input:** Title is empty string
-- **Expected:** Returns 422 with title required error
-
-### TC-POLL-06: Room Code Uniqueness
-- **Action:** Create 100 polls
-- **Expected:** All room codes are unique
-
-### TC-POLL-07: QR Code is Generated
-- **Action:** Create a poll
-- **Expected:** `qr_code_url` is accessible and returns a valid image
-
-### TC-POLL-08: Default Status is Draft
-- **Action:** Create a poll
-- **Expected:** `status` field in response is `draft`
-
----
-
-## 5. Poll Lifecycle
-
-### TC-LIFECYCLE-01: Open a Draft Poll
-- **Action:** POST /admin/polls/:id/open on a draft poll
-- **Expected:** Status changes to `active`, `opened_at` is set
-
-### TC-LIFECYCLE-02: Pause an Active Poll
-- **Action:** POST /admin/polls/:id/pause on an active poll
-- **Expected:** Status changes to `paused`
-
-### TC-LIFECYCLE-03: Close an Active Poll
-- **Action:** POST /admin/polls/:id/close on an active poll
-- **Expected:** Status changes to `closed`, `closed_at` is set
-
-### TC-LIFECYCLE-04: Cannot Vote on Paused Poll
-- **Action:** Submit vote to a paused poll
-- **Expected:** Returns 422 with poll not active message
-
-### TC-LIFECYCLE-05: Cannot Vote on Closed Poll
-- **Action:** Submit vote to a closed poll
-- **Expected:** Returns 422
-
-### TC-LIFECYCLE-06: Edit Draft Poll
-- **Action:** PUT /admin/polls/:id on a draft poll
-- **Expected:** Returns 200 with updated data
-
-### TC-LIFECYCLE-07: Cannot Edit Active Poll
-- **Action:** PUT /admin/polls/:id on an active poll
-- **Expected:** Returns 422 or 403 with appropriate message
-
-### TC-LIFECYCLE-08: Duplicate Poll
-- **Action:** POST /admin/polls/:id/duplicate
-- **Expected:** New poll created with same title (+ "Copy"), same options, zero votes, status draft
-
-### TC-LIFECYCLE-09: Delete Poll (Soft Delete)
-- **Action:** DELETE /admin/polls/:id
-- **Expected:** Poll no longer appears in list, `deleted_at` is set in DB
-
-### TC-LIFECYCLE-10: Reset Results
-- **Action:** POST /admin/polls/:id/reset on a closed poll
-- **Expected:** All votes deleted, `total_votes` and all `vote_count` fields reset to 0
-
----
-
-## 6. QR Code & Room Code Access
-
-### TC-ACCESS-01: Valid Room Code
-- **Input:** Valid room code for an active poll
-- **Expected:** Returns 200 with poll details and options
-
-### TC-ACCESS-02: Invalid Room Code
-- **Input:** Room code that does not exist
-- **Expected:** Returns 404
-
-### TC-ACCESS-03: Room Code for Closed Poll
-- **Input:** Valid room code for a closed poll
-- **Expected:** Returns 422 with `status: closed`
-
-### TC-ACCESS-04: Room Code is Case-Insensitive
-- **Input:** Lowercase version of a valid room code
-- **Expected:** Returns 200 (normalize to uppercase server-side)
-
-### TC-ACCESS-05: QR Code URL Redirects to Correct Poll
-- **Action:** Visit the URL encoded in the QR code
-- **Expected:** Voter lands on the correct voting page
-
----
-
-## 7. Voting
-
-### TC-VOTE-01: Submit Valid Single-Choice Vote
-- **Input:** One `option_id` for a single-choice poll
-- **Expected:** Returns 201, vote count increments
-
-### TC-VOTE-02: Submit Valid Multiple-Choice Vote
-- **Input:** Two `option_ids` for a multiple-choice poll
-- **Expected:** Returns 201, both option counts increment
-
-### TC-VOTE-03: Submit Two Options for Single-Choice Poll
-- **Input:** Two `option_ids` for a single-choice poll
-- **Expected:** Returns 422
-
-### TC-VOTE-04: Submit Zero Options
-- **Input:** Empty `option_ids` array
-- **Expected:** Returns 422
-
-### TC-VOTE-05: Submit Option Not Belonging to Poll
-- **Input:** `option_id` from a different poll
-- **Expected:** Returns 422
-
-### TC-VOTE-06: Duplicate Vote — Same Token
-- **Action:** Submit vote twice with same voter_token
-- **Expected:** First returns 201, second returns 409
-
-### TC-VOTE-07: Duplicate Vote — Concurrent Requests
-- **Action:** Send 5 simultaneous vote requests with the same voter_token
-- **Expected:** Exactly 1 vote is recorded, others return 409 or 500
-
-### TC-VOTE-08: Total Vote Count Increments
-- **Action:** Submit 10 valid votes (different tokens)
-- **Expected:** `polls.total_votes` = 10 and option counts sum to 10
-
-### TC-VOTE-09: Vote on Archived Poll
-- **Input:** Valid room code for an archived poll
-- **Expected:** Returns 422
-
----
-
-## 8. Live Results
-
-### TC-RESULTS-01: Results Match Submitted Votes
-- **Action:** Submit 5 votes for option A and 3 for option B
-- **Expected:** Results show A: 5 (62.5%), B: 3 (37.5%), total: 8
-
-### TC-RESULTS-02: Percentages Sum to 100
-- **Action:** Fetch results for any poll with votes
-- **Expected:** Percentages of all options sum to 100 (allow ±0.1 for rounding)
-
-### TC-RESULTS-03: Results Refresh
-- **Action:** Submit a vote, then fetch results after 3 seconds
-- **Expected:** Results reflect the new vote
-
-### TC-RESULTS-04: Results Accessible Without Auth
-- **Action:** GET /polls/:room_code/results without Bearer token
-- **Expected:** Returns 200
-
-### TC-RESULTS-05: Zero Votes State
-- **Action:** Fetch results for a poll with no votes
-- **Expected:** All percentages are 0, total_votes is 0
-
----
-
-## 9. Security Tests
-
-### TC-SEC-01: Rate Limit on Vote Endpoint
-- **Action:** Submit 4 votes from same IP within 1 minute
-- **Expected:** 4th request returns 429
-
-### TC-SEC-02: Admin Cannot Access Another Admin's Poll
-- **Action:** Admin B tries to GET /admin/polls/:id where poll belongs to Admin A
-- **Expected:** Returns 404 or 403
-
-### TC-SEC-03: XSS in Poll Title
-- **Input:** Title = `<script>alert('xss')</script>`
-- **Expected:** Stored as plain text, rendered escaped in UI, no script executes
-
-### TC-SEC-04: SQL Injection in Room Code
-- **Input:** Room code = `'; DROP TABLE polls; --`
-- **Expected:** Returns 404, no database error, no data loss
-
-### TC-SEC-05: Unauthenticated Access to Admin Poll List
-- **Action:** GET /admin/polls with no token
-- **Expected:** Returns 401
-
----
-
-## 10. Mobile & Browser Compatibility
-
-Test the voter flow on:
-
-| Browser | OS | Test |
-|---|---|---|
-| Chrome | Android | QR scan → vote → confirm |
-| Safari | iOS | QR scan → vote → confirm |
-| Chrome | iOS | Room code entry → vote → confirm |
-| Firefox | Android | Room code entry → vote → confirm |
-| Chrome | Desktop | Full admin flow |
-| Safari | macOS | Full admin flow |
-
----
-
-## 11. Load Testing (k6)
-
-### Scenario A — 500 concurrent voters
-- 500 virtual users each submit one vote over 60 seconds
-- **Acceptance:** No 5xx errors, p95 response time < 500ms
-
-### Scenario B — Vote submission burst
-- 100 users submit votes simultaneously within 1 second
-- **Acceptance:** Exactly 100 votes recorded (no duplicate, no lost vote)
-
-### Scenario C — Results page under load
-- 200 users poll the results endpoint every 3 seconds for 5 minutes
-- **Acceptance:** p95 response time < 300ms, no errors
-
----
-
-## 12. Pre-Launch Checklist
-
-- [ ] All TC-AUTH tests pass
-- [ ] All TC-POLL tests pass
-- [ ] All TC-VOTE tests pass
-- [ ] All TC-RESULTS tests pass
-- [ ] All TC-SEC tests pass
-- [ ] QR code scans successfully on iOS and Android
-- [ ] Voter flow works on mobile Safari
-- [ ] Admin dashboard works on desktop Chrome and Safari
-- [ ] Load test Scenario A passes
-- [ ] `APP_DEBUG=false` on production
-- [ ] SSL certificate installed and auto-renewing
-- [ ] Database is not publicly accessible
-- [ ] Audit logs are recording all admin actions
-- [ ] Email delivery (password reset) tested on production SMTP
+## 2. Authentication & Roles
+
+- **TC-AUTH-01** Valid login lands on the dashboard (Inertia redirect + auth prop set).
+- **TC-AUTH-02** Invalid password is rejected (errors bag), no session established.
+- **TC-AUTH-03** Password reset flow issues and consumes a reset token.
+- **TC-AUTH-04** Auth routes are rate-limited (429 past threshold).
+- **TC-PERM-01** Non-admin gets 403 on admin-only routes (delete, add-time, `admin/users`).
+- **TC-PERM-02** Non-owner non-admin cannot edit/close/restart another creator's poll (403).
+- **TC-PERM-03** New registration defaults to role `creator`.
+- **TC-PERM-04 (D16)** Self-demotion, self-deletion, and last-admin removal are blocked; `role` is
+  validated against the enum.
+
+## 3. Poll Management
+
+- **TC-POLL-01** Create single-choice poll with 3 options → persisted, status `draft`, a UUID assigned.
+- **TC-POLL-02** Create multiple-choice poll (`allow_multiple = true`) succeeds.
+- **TC-POLL-03** 1 option → 422 (errors bag); **TC-POLL-04** 11 options → 422.
+- **TC-POLL-05** Empty title → 422.
+- **TC-POLL-06** Launch sets `status=active`, `starts_at`, and resolves `ends_at` (duration or deadline).
+- **TC-POLL-07** Launching a second poll enforces one-active-poll-per-creator (D1).
+- **TC-POLL-08** Edit by owner/admin updates fields; options edit-in-place when votes exist.
+- **TC-POLL-09** Delete (admin) cascades options + votes.
+- **TC-UUID-01** Public URLs, QR/share, and channel names use the UUID; the integer id never appears
+  in props or URLs (D15).
+
+## 4. Poll Lifecycle
+
+- **TC-LIFECYCLE-01** Close moves `active → ended`, sets `ends_at`, broadcasts `.poll.status`.
+- **TC-LIFECYCLE-02** Restart clears all votes, sets new `starts_at`/`ends_at`, status `active`.
+- **TC-LIFECYCLE-03** Add-time (admin) extends `ends_at`.
+- **TC-LIFECYCLE-04** Vote on a `draft`/`ended` poll is rejected.
+- **TC-SCHED-01** A poll whose `ends_at` has passed is settled to `ended` by `settleIfExpired` on read.
+- **TC-SCHED-02** The scheduled sweeper in `routes/console.php` ends expired polls without a request.
+
+## 5. Voting & Dedupe
+
+- **TC-VOTE-01** Authed single-choice vote is accepted; tally (derived) increments.
+- **TC-VOTE-02** Multiple-choice vote records one row per selected option.
+- **TC-VOTE-03** Option from another poll is rejected (422).
+- **TC-DEDUPE-01** Second vote with the same `voter_key` is rejected (single-choice).
+- **TC-DEDUPE-02** Same email and same device-token paths both dedupe.
+- **TC-DEDUPE-03 (R2)** Concurrent/burst votes for one `voter_key` persist **exactly one** vote
+  (`Cache::lock` + unique index).
+- **TC-DEDUPE-04** After a restart, the same voter can vote again (round cookie + wiped votes).
+- **TC-TALLY-01** Tally always equals `COUNT(votes)`; client-sent counts are ignored (D3).
+- **TC-RATE-01** Authed and guest vote endpoints return 429 past their limits.
+
+## 6. Public / Guest / QR
+
+- **TC-GUEST-01** `/p/{uuid}` renders for a logged-out user; guest can vote by email.
+- **TC-GUEST-02** Returning guest sees voted state via `voted_poll_{uuid}` cookie; server dedupe still authoritative.
+- **TC-GUEST-03** `/r/{uuid}` results page renders without login and lists recent voters even after the poll ends.
+- **TC-PASSWORD-01** Gated poll rejects votes until unlocked; **TC-PASSWORD-02** wrong password rejected at `unlock`.
+- **TC-QR-01** QR encodes the public UUID URL and lands on the correct poll.
+
+## 7. Real-time (manual — pending verification)
+
+- **TC-REALTIME-01** Two-browser authed test: a vote pushes `.vote.cast` tally + `.voter.ticked` to the other client.
+- **TC-REALTIME-02** Two-browser public guest/results test over the public channel.
+- **TC-REALTIME-03** Acting voter does not see duplicate movement (socket-id / `toOthers()`), risk R3.
+- **TC-REALTIME-04** Status change broadcasts and updates spectators (`.poll.status`).
+- **TC-REALTIME-05 (R6)** With Reverb killed, votes still persist; the results page falls back to its reload backstop.
+
+## 8. Option Media (D10 / D10a)
+
+- **TC-MEDIA-01** Upload validates MIME allowlist + size cap; oversize/disallowed → surfaced `errors['options.N.image']`.
+- **TC-MEDIA-02** With `storage:link`, `Storage::url` renders the image across show/public/results.
+
+## 9. Security
+
+- **TC-SEC-01** XSS payload in title/option label is stored verbatim and rendered escaped (no execution).
+- **TC-SEC-02** SQL-injection-style UUID/input causes a 404/validation error, no DB error or data loss.
+- **TC-SEC-03** Non-owner cannot read/mutate another creator's poll controls (403).
+- **TC-SEC-04** Visit records (D17) store only a salted IP hash, never a raw IP.
+
+## 10. Load (external k6 — see load-test-agent)
+
+- **Scenario vote-storm** — N concurrent guests vote; p95 < 500 ms, 5xx < 1% at target concurrency.
+- **Scenario exactly-once-burst** — M simultaneous votes share one `voter_key` → exactly one persists (R2).
+- **Scenario results-read-fanout** — heavy `/r/{uuid}` + `/p/{uuid}` polling; results p95 < 300 ms (D3 evidence).
+- **Scenario reverb-subscribers** — K WebSocket clients on `poll.{uuid}`; broadcast latency + Reverb CPU/connections (R1/R3).
+
+## 11. Mobile & Browser
+
+Voter flow on Chrome/Android, Safari/iOS, Chrome/iOS; full authed flow on desktop Chrome and Safari/macOS.
+QR scan on iOS and Android.
+
+## 12. Pre-Release Checklist (feeds the Release Gates)
+
+- [ ] `php artisan test` green; passing count recorded.
+- [ ] `npm run build` green; lint/format clean.
+- [ ] Enum/type drift check passes (PHP enums ↔ `types/models.ts`).
+- [ ] All TC-VOTE / TC-DEDUPE / TC-PASSWORD / TC-PERM pass.
+- [ ] Manual two-browser Reverb test passes (authed + public).
+- [ ] Public guest + password-gated voting verified.
+- [ ] Load scenarios meet thresholds; coalescing window tuned (R1).
+- [ ] Accessibility pass completed.
+- [ ] `APP_DEBUG=false`, SSL active, DB not publicly reachable, `storage:link` done.

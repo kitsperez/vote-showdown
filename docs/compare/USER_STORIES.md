@@ -1,86 +1,68 @@
 # User Stories
-# QR Voting Application
+# Vote Showdown
 
-**Format:** As a [role], I want to [action], so that [benefit].  
-**Priority:** Must Have (MVP) | Should Have | Nice to Have
-
----
-
-## 1. Admin — Authentication
-
--- As an admin, I want to log in with my email and password so that I can access the dashboard securely. | Must Have |
--- As an admin, I want to log out so that my session is ended on shared devices. | Must Have |
--- As an admin, I want to reset my password via email so that I can regain access if I forget it. | Must Have |
--- As an admin, I want my session to expire after inactivity so that unauthorized users cannot access my account. | Must Have |
+> **Realigned to the source of truth.** Roles updated to **Admin / Poll Creator / Voter** (D20),
+> with guest voting by email/`voter_key` (not anonymous fingerprinting) and live results over
+> Reverb. Format: As a [role], I want to [action], so that [benefit]. Priority: Must / Should / Nice.
 
 ---
 
-## 2. Admin — Poll Creation
+## 1. Auth & Account
 
--- As an admin, I want to create a poll with a title, description, and instructions so that voters understand what they are voting on. | Must Have |
--- As an admin, I want to add between 2 and 10 options to a poll so that voters have meaningful choices. | Must Have |
--- As an admin, I want to choose between single-choice and multiple-choice poll types so that the voting rules match my intent. | Must Have |
--- As an admin, I want the system to automatically generate a unique room code so that I can share it with voters easily. | Must Have |
--- As an admin, I want to see a QR code for my poll so that I can display it on a screen or printed material. | Must Have |
--- As an admin, I want to download or copy the voting URL so that I can share it digitally. | Must Have |
--- As an admin, I want to edit a poll while it is in draft status so that I can correct mistakes before opening it. | Must Have |
+- As a **Poll Creator**, I want to register and log in, so that I can build and run my own polls. | Must |
+- As a user, I want to log out, so that my session ends on shared devices. | Must |
+- As a user, I want to reset my password by email, so that I can regain access. | Must |
+- As an **Admin**, I want to manage user accounts and roles (D16), so that I control who can create polls. | Should |
 
----
+## 2. Poll Creation (Poll Creator)
 
-## 3. Admin — Poll Management
--- As an admin, I want to open a poll so that voters can start submitting votes. | Must Have |
--- As an admin, I want to pause a poll so that I can temporarily stop new votes without closing it permanently. | Must Have |
--- As an admin, I want to close a poll so that no more votes are accepted. | Must Have |
--- As an admin, I want to archive a poll so that it is hidden from the main list but still accessible. | Should Have |
--- As an admin, I want to duplicate a poll so that I can reuse its structure for future votes. | Should Have |
--- As an admin, I want to delete a poll so that test or unwanted polls are removed. | Must Have |
--- As an admin, I want to reset the results of a poll so that I can run it again without creating a new one. | Should Have |
--- As an admin, I want to see a list of all my polls filtered by status so that I can manage them efficiently. | Must Have |
+- As a Poll Creator, I want to create a poll with a title and optional description, so that voters know what they're voting on. | Must |
+- As a Poll Creator, I want 2–10 options, each with a color and optionally an image or icon, so that the poll looks on-brand. | Must |
+- As a Poll Creator, I want to choose single- or multiple-choice, so that the rules match my intent. | Must |
+- As a Poll Creator, I want to set the poll to end after a countdown or at a deadline, so that it closes automatically. | Must |
+- As a Poll Creator, I want an optional access password, so that only invited people can vote (D9). | Should |
+- As a Poll Creator, I want a QR code and share link for my poll, so that I can display or send it. | Must |
+- As a Poll Creator, I want to edit a poll, so that I can fix mistakes before/while it runs. | Must |
 
----
+## 3. Poll Management
 
-## 4. Admin — Results
+- As a Poll Creator, I want to launch a poll, so that voting opens (one active poll at a time per creator). | Must |
+- As a Poll Creator/Admin, I want to close a poll, so that no more votes are accepted. | Must |
+- As a Poll Creator/Admin, I want to restart a poll, so that I can run a fresh round (clears votes). | Should |
+- As an Admin, I want to add time to a running poll, so that I can extend a close finish. | Should |
+- As an Admin, I want to delete a poll, so that test/unwanted polls are removed. | Must |
+- As an Admin, I want to remove a specific voter's votes (D18), so that I can moderate abuse. | Should |
+- As a user, I want my poll list and dashboard, so that I can manage and monitor my polls. | Must |
 
--- As an admin, I want to see live vote counts per option so that I know how voting is progressing. | Must Have |
--- s an admin, I want to see percentages alongside vote counts so that I can understand the distribution at a glance. | Must Have |
--- As an admin, I want the results to update automatically without refreshing the page so that I can monitor a live event. | Must Have |
--- As an admin, I want a fullscreen/projector mode so that I can display results on a large screen during an event. | Must Have |
--- As an admin, I want to see options ranked from highest to lowest votes so that the leading option is immediately visible. | Must Have |
+## 4. Results
 
----
+- As a viewer, I want live vote counts per option, so that I can follow progress. | Must |
+- As a viewer, I want percentages alongside counts, so that I understand the distribution. | Must |
+- As a viewer, I want results to update without refreshing (Reverb), so that I can watch a live event. | Must |
+- As a Poll Creator, I want a public results/projection page, so that I can display it on a big screen. | Must |
+- As a viewer, I want a clear winner highlighted when the poll ends, so that the outcome is obvious. | Should |
 
-## 5. Voter — Access
+## 5. Voting (Voter)
 
--- As a voter, I want to scan a QR code to access a poll so that I don't need to type anything. | Must Have |
--- As a voter, I want to type a room code to access a poll so that I can participate even without a camera. | Must Have |
--- As a voter, I want to visit a direct URL to access a poll so that I can participate from a link shared online. | Must Have |
--- As a voter, I want to see a clear error message if the poll is closed or paused so that I understand why I cannot vote. | Must Have |
+- As a Voter, I want to scan a QR or open a link to reach a poll, so that I don't have to type anything. | Must |
+- As a Voter, I want to vote without creating an account (guest by email/device), so that it's low friction. | Must |
+- As a Voter, I want to be stopped from voting twice, so that my earlier vote isn't overridden. | Must |
+- As a Voter, I want a clear message if the poll is locked, not started, or ended, so that I understand why I can't vote. | Must |
+- As a Voter, I want to enter the access password once when required, so that I can vote on a gated poll. | Should |
+- As a Voter, I want the voting page to work well on mobile, so that I don't need a computer. | Must |
 
----
+## 6. System Behaviors
 
-## 6. Voter — Voting
+- As the system, I want tallies derived from vote rows, so that counts are always accurate and never client-trusted (D3). | Must |
+- As the system, I want one vote per `voter_key` enforced by a lock + unique index, so that concurrent submissions can't duplicate (R2). | Must |
+- As the system, I want votes to persist even if broadcasting fails, so that Reverb outages don't lose votes (R6). | Must |
+- As the system, I want expired polls auto-ended on read and by the scheduler, so that timing is authoritative (R8). | Must |
+- As the system, I want public/voting endpoints rate-limited, so that flooding/enumeration is blunted (R4). | Must |
+- As the system, I want only salted IP hashes stored for visit stats (D17), so that no raw PII is kept (R13). | Should |
 
--- As a voter, I want to see the poll title, description, and all options clearly so that I can make an informed choice. | Must Have |
--- As a voter, I want to select my preferred option(s) and submit my vote with one tap so that the process is quick. | Must Have |
--- As a voter, I want to see a confirmation screen after voting so that I know my vote was recorded. | Must Have |
--- As a voter, I want the system to prevent me from voting twice so that my earlier vote is not overridden. | Must Have |
--- As a voter, I want to vote anonymously so that my choice is private. | Must Have |
--- As a voter, I want the voting page to work on my mobile phone so that I don't need a computer. | Must Have |
+## 7. Nice to Have (post-current)
 
----
-
-## 7. System Behaviors
-
--- As the system, I want to log all admin actions (create, open, close, delete) so that there is an audit trail. | Must Have |
--- As the system, I want to enforce rate limiting on the vote endpoint so that a single device cannot flood the system. | Must Have |
--- As the system, I want to reject a duplicate vote at the database level so that even concurrent submissions are handled correctly. | Must Have |
--- As the system, I want to update vote counts atomically so that the displayed totals are always accurate. | Must Have |
-
----
-
-## 8. Nice to Have (Post-MVP)
-
--- As an admin, I want to export poll results to CSV so that I can analyze data externally. | Nice to Have |
--- As an admin, I want to schedule a poll to open at a specific time so that I don't need to be present. | Nice to Have |
--- As an admin, I want to add custom branding (logo, colors) to a poll so that it matches my organization. | Nice to Have |
--- As a voter, I want to see live results after voting so that I know how my vote compares. | Nice to Have |
+- As a Voter, I want a magic link that drops me straight onto the voting page (D2). | Nice |
+- As an Admin, I want an audit log of admin actions, so that there's accountability. | Nice |
+- As a Poll Creator, I want to duplicate a poll, so that I can reuse its structure. | Nice |
+- As a Poll Creator, I want to export results, so that I can analyze them externally. | Nice |

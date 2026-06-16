@@ -1,278 +1,90 @@
-# Development Roadmap
-# QR Voting Application
+# Roadmap
+# Vote Showdown
 
-**Total Estimated Hours:** 160–200 hours  
-**Team:** 1 Full-Stack Developer (or split across backend + frontend)
-
----
-
-## Phase 1 — Project Setup
-**Estimated:** 8–10 hours
-
-### Tasks
-- Initialize Laravel 12 project with PHP 8.3
-- Configure MySQL 8 database connection
-- Set up Laravel Sanctum for API authentication
-- Initialize React 19 project with TypeScript
-- Configure Tailwind CSS and shadcn/ui
-- Set up React Router v6
-- Set up Zustand for state management
-- Configure environment files (.env) for local development
-- Set up Git repository and branch strategy (main, develop, feature/*)
-- Configure ESLint, Prettier, and PHP CS Fixer
-
-### Risks
-- shadcn/ui component compatibility with React 19 — verify before building
-
-### Dependencies
-- None — this is the starting point
+> **Realigned to the source of truth.** The original greenfield roadmap (build everything on
+> Sanctum/Zustand/React Router with HTTP polling) no longer applies — the core app is **built**.
+> This is now a *remaining-work* roadmap mapped to the canonical
+> [`../09-execution-checklist.md`](../09-execution-checklist.md) and decision/risk logs in
+> [`../08-delivery-plan.md`](../08-delivery-plan.md). Estimates are rough (S < 1d, M 1–3d, L 3–5d).
 
 ---
 
-## Phase 2 — Database
-**Estimated:** 8–10 hours
+## Done (baseline)
 
-### Tasks
-- Write migrations for: `admins`, `polls`, `poll_options`, `votes`, `vote_options`, `voter_sessions`, `audit_logs`
-- Add all indexes and foreign keys
-- Write seeders: admin account, sample poll data
-- Write Eloquent models with relationships
-- Write model factories for testing
-- Verify all constraints work correctly
-
-### Risks
-- Unique index on `(poll_id, voter_token)` must handle concurrent inserts — test under load
-
-### Dependencies
-- Phase 1 complete
+Laravel 12 + Inertia v2 + React 19 scaffold; poll CRUD/edit/launch/close/restart; duration & deadline
+end modes; optional password gate; option image/icon; authed + public guest voting with `voter_key`
+dedupe and `Cache::lock`; QR/share + public results; Reverb tally/ticker/status events; scheduled
+auto-end; role-aware dashboard. The frozen `src/` prototype is design reference only.
 
 ---
 
-## Phase 3 — Backend API
-**Estimated:** 50–60 hours
+## Phase A — Realtime & Load Verification  *(highest priority; risks R1/R2/R3/R6)*
+**Effort:** M–L · **Depends on:** local Reverb + scheduler running
 
-### 3.1 Authentication (8 hrs)
-- Login endpoint
-- Logout endpoint
-- Forgot password + reset password
-- Auth middleware guard
-- Rate limiting on auth routes
+- Two-browser live tests: authed and public guest/results channels.
+- Verify socket-id / `toOthers()` so the acting voter sees no duplicate movement (R3).
+- Kill-Reverb degraded-mode check: votes still persist; results page reload backstop works (R6).
+- k6 load scenarios via the `load-test-agent`: `vote-storm`, `exactly-once-burst` (R2),
+  `results-read-fanout` (D3 evidence), `reverb-subscribers` (R1). Tune the coalescing window.
 
-### 3.2 Poll CRUD (12 hrs)
-- Create poll with options
-- List polls (filterable)
-- Get single poll
-- Update poll (draft only)
-- Soft delete poll
-- Room code generation logic
-- Voting URL generation logic
-- QR code generation (use `simplesoftwareio/simple-qrcode` or `bacon/bacon-qr-code`)
+## Phase B — Planned Feature Set  *(scoped in docs, not built)*
+**Effort:** L overall · **Depends on:** Phase A not required, but share schema review
 
-### 3.3 Poll Lifecycle (8 hrs)
-- Open, pause, close, archive endpoints
-- Status transition validation (e.g., cannot open an archived poll)
-- Audit log entry on every status change
+- **UUID exposure hardening (D15)** — confirm every route/channel/QR uses the UUID; Pest that the
+  int id never leaks. *(Mostly built; verify + test.)*
+- **Admin User Management (D16)** — `admin/users` resource, `UserPolicy`, last-admin/self-demotion
+  safeguards. (M)
+- **Poll Visit Statistics (D17)** — `poll_visits` + `visits_count`, salted IP hash, admin-only
+  surfacing, conversion metric. (M)
+- **Admin Vote Moderation (D18)** — delete a voter's votes by `voter_key`, recompute + rebroadcast,
+  confirmation modal. (S–M)
+- **Option image hardening (D10a)** — MIME allowlist, larger cap, surfaced per-option errors,
+  `storage:link` verified. (S)
 
-### 3.4 Poll Operations (6 hrs)
-- Duplicate poll
-- Reset poll results (delete votes + reset counts in transaction)
-- Audit log entries for all operations
+## Phase C — Product Decisions  *(close before dependent work)*
+**Effort:** S (decisions) — see open decisions in the checklist & [`comparison.md`](comparison.md)
 
-### 3.5 Voting (12 hrs)
-- Room code validation endpoint
-- Submit vote endpoint
-- Duplicate vote prevention (unique constraint + voter_session check)
-- Atomic vote count increment
-- Check-if-voted endpoint
-- Rate limiting on vote endpoint
+- Magic-link voting model vs. current guest model (D2).
+- Canonical QR target: `/p/{uuid}` vs. `/polls/{uuid}/join`.
+- New-signup default role / elevation policy.
+- Dashboard engagement-rate formula.
+- D-new-* from the comparison review (multiple-choice already supported; room code; pause/archive;
+  denormalized counters only if load proves it; audit logging scope).
 
-### 3.6 Results (6 hrs)
-- Public results endpoint (vote count + percentage)
-- Admin results endpoint (with metadata)
-- Percentage calculation logic
+## Phase D — Quality Gates & Accessibility  *(risks R7)*
+**Effort:** M · **Depends on:** Phase A for the realtime/load gates
 
-### 3.7 API Polish (8 hrs)
-- Consistent error response formatting
-- Form Request validation classes
-- API resource classes for response shaping
-- Postman/Insomnia collection export
+- Re-run and record `php artisan test`; `npm run build`; lint/format.
+- Enum/type drift check (PHP enums ↔ `types/models.ts`) as a CI gate.
+- Wire CI: PHP tests, frontend build, TypeScript, lint/format, drift.
+- Accessibility pass: keyboard nav, focus, labels, contrast (brutalist UI).
+- Confirm rate limits on vote/public-vote/unlock/QR/control routes (R4).
 
-### Risks
-- Race conditions on vote submission — mitigated by unique DB constraint + atomic increment
-- QR code library choices may differ in output quality — test on mobile scanners
+## Phase E — Deployment Hardening  *(risks R4/R6/R8)*
+**Effort:** M–L · **Depends on:** Phases A & D
 
-### Dependencies
-- Phase 2 complete
+- Forge/VPS: web + TLS, MySQL 8, Redis (cache/queue/locks/coalescing).
+- Supervisor for queue worker, Reverb, and `schedule:run`.
+- Staging smoke test: auth, public + password-gated voting, QR, live Reverb, scheduled expiry.
+- Verify rollback path.
 
 ---
 
-## Phase 4 — Frontend
-**Estimated:** 55–65 hours
+## Risks (carried from the delivery plan)
 
-### 4.1 Auth Pages (8 hrs)
-- Login page
-- Forgot password page
-- Reset password page
-- Auth store (Zustand)
-- Protected route wrapper
+R1 broadcast storm · R2 single-choice race · R3 duplicate acting-user updates · R4 public abuse ·
+R6 Reverb unavailable · R7 docs/code drift · R8 expired polls · R11 UUID migration ·
+R12 user-management privilege escalation · R13 visit-stat PII · R14 vote-deletion tally corruption.
+Mitigations are in [`../08-delivery-plan.md`](../08-delivery-plan.md).
 
-### 4.2 Admin Dashboard + Poll List (8 hrs)
-- Dashboard overview page
-- Poll list with status filters
-- Poll status badge component
-- Empty state component
+## Release Gates
 
-### 4.3 Poll Create + Edit (12 hrs)
-- Poll creation form (title, description, type, options)
-- Dynamic option add/remove (min 2, max 10)
-- Display order drag-and-drop (optional — nice to have)
-- Validation feedback
-- Poll edit page (draft only)
-
-### 4.4 Poll Detail Page (8 hrs)
-- QR code display + download button
-- Room code display + copy button
-- Voting URL display + copy button
-- Poll lifecycle action buttons (open, pause, close, archive)
-- Confirm dialogs for destructive actions
-
-### 4.5 Voter Flow (12 hrs)
-- Room code entry page
-- Voting page (single and multiple choice)
-- Vote submission logic
-- Voter token generation (`useVoterToken` hook)
-- Already-voted detection (check localStorage + API)
-- Vote confirmation page
-
-### 4.6 Results Dashboard (10 hrs)
-- Live results page (admin)
-- Bar chart (Recharts)
-- Percentage bars
-- Leaderboard ranking
-- Auto-refresh (3-second polling via `useLiveResults`)
-- Projector/fullscreen mode
-
-### 4.7 Polish (7 hrs)
-- Loading states and spinners
-- Error boundaries
-- Toast notifications for actions
-- Responsive layout (mobile-first)
-- Keyboard navigation and basic accessibility
-
-### Risks
-- Recharts bundle size — consider lazy loading the results page
-- Fingerprint generation accuracy varies by browser — test on iOS Safari
-
-### Dependencies
-- Phase 3 complete (or use mock API responses during frontend dev)
+Mirrors [`QA_TEST_PLAN.md`](QA_TEST_PLAN.md) §12 and the delivery plan's gates: tests/build/lint/drift
+green, two-browser Reverb verified, guest + password voting verified, load thresholds met, a11y pass,
+production `APP_DEBUG=false` + TLS + `storage:link`, rollback verified.
 
 ---
 
-## Phase 5 — Real-Time Features
-**Estimated:** 10–15 hours
-
-### For MVP (up to 500 voters): HTTP Polling
-- `useLiveResults` hook polls every 3 seconds
-- Stop polling when poll is closed
-- No additional backend work needed
-
-### For Scale (500–2,000 voters): Server-Sent Events (SSE)
-- Laravel SSE endpoint using `StreamedResponse`
-- Client subscribes to `EventSource` URL
-- Backend broadcasts result update when vote is submitted
-- Estimated: +10 hours over polling approach
-
-### For Large Scale (2,000–10,000 voters): Laravel Reverb (WebSockets)
-- Install and configure Laravel Reverb
-- Create `VoteSubmitted` broadcast event
-- React client uses Laravel Echo + Pusher JS
-- Requires a separate Reverb server process on VPS
-- Estimated: +20 hours over polling approach
-
-### Recommendation
-**Start with HTTP polling for MVP.** Migrate to SSE or Reverb only when live testing shows lag is noticeable. The `useLiveResults` hook abstracts the transport — only the hook internals change, not the components.
-
-### Risks
-- SSE connections count against server connection limits — monitor under load
-- Reverb requires WebSocket port open on VPS firewall (port 8080 or 6001)
-
-### Dependencies
-- Phase 3 and Phase 4 complete
-
----
-
-## Phase 6 — Testing
-**Estimated:** 20–25 hours
-
-### Backend Testing (Laravel)
-- Feature tests for all API endpoints
-- Unit tests for: vote submission logic, room code generation, fingerprint token handling, status transition validation
-- Database tests: unique constraint enforcement, atomic increment
-- Authentication tests: login, logout, password reset
-
-### Frontend Testing
-- Component tests (Vitest + React Testing Library)
-- Hook tests: `useVoterToken`, `useLiveResults`
-- E2E tests (Playwright): full voter flow, admin poll lifecycle
-
-### Manual QA
-- QR code scanning on iOS Safari, Android Chrome
-- Duplicate vote attempt testing
-- Multiple browser tab simultaneous vote submissions
-- Mobile layout across screen sizes
-
-### Risks
-- E2E test setup for QR scanning requires a physical device — simulate via direct URL instead
-
-### Dependencies
-- Phase 4 complete
-
----
-
-## Phase 7 — Deployment
-**Estimated:** 10–15 hours
-
-### Server Setup (Linux VPS)
-- Install PHP 8.3, Composer, Node.js, MySQL 8
-- Install and configure Nginx
-- Set up SSL with Let's Encrypt (Certbot)
-- Configure `.env` for production
-- Set `APP_DEBUG=false`, `APP_ENV=production`
-
-### Application Deployment
-- Set up deployment pipeline (GitHub Actions or Deployer.php)
-- Run migrations on production
-- Run seeders (admin account)
-- Build React frontend (`npm run build`)
-- Point Nginx to the React build `/dist` folder
-
-### Background Jobs
-- Configure Laravel queue worker (for emails, audit log processing)
-- Set up cron job for `php artisan schedule:run` (for session cleanup)
-
-### Monitoring
-- Set up basic server monitoring (CPU, memory, disk)
-- Configure Laravel log rotation
-- Set up uptime monitoring (e.g., UptimeRobot)
-
-### Risks
-- MySQL 8 strict mode may cause migration issues — test locally with strict mode enabled
-- QR code image storage — ensure `/storage/app/public` is linked and Nginx serves it correctly
-
-### Dependencies
-- Phase 6 complete and all tests passing
-
----
-
-## Summary Table
-
-| Phase | Name | Hours |
-|---|---|---|
-| 1 | Project Setup | 8–10 |
-| 2 | Database | 8–10 |
-| 3 | Backend API | 50–60 |
-| 4 | Frontend | 55–65 |
-| 5 | Real-Time | 10–15 |
-| 6 | Testing | 20–25 |
-| 7 | Deployment | 10–15 |
-| **Total** | | **161–200** |
+> **Stack is fixed.** No phase introduces REST/Sanctum, Zustand, React Router, shadcn, Recharts, or
+> HTTP-polling-as-strategy. New packages are proposed only when a feature genuinely needs one and the
+> source-of-truth docs are updated in the same change.

@@ -1,315 +1,165 @@
 # Frontend Architecture
-# QR Voting Application
+# Vote Showdown
 
-**Stack:** React 19, TypeScript, Tailwind CSS, shadcn/ui  
-**Version:** 1.0
+> **Realigned to the source of truth.** Rewritten for the actual frontend: **Inertia v2 + React 19
+> + TypeScript + Tailwind v4**. The earlier version described a standalone SPA (React Router v6,
+> Zustand, shadcn/ui, Recharts, Axios) that we are **not** adopting (D5). Canonical: [`../05-frontend.md`](../05-frontend.md).
 
----
-
-## 1. Folder Structure
-
-```
-src/
-├── api/                    # API client functions
-│   ├── auth.ts
-│   ├── polls.ts
-│   ├── voting.ts
-│   └── results.ts
-│
-├── components/             # Reusable UI components
-│   ├── ui/                 # shadcn/ui base components (Button, Input, etc.)
-│   ├── layout/
-│   │   ├── AdminLayout.tsx
-│   │   ├── VoterLayout.tsx
-│   │   └── Navbar.tsx
-│   ├── polls/
-│   │   ├── PollCard.tsx
-│   │   ├── PollStatusBadge.tsx
-│   │   ├── PollOptionItem.tsx
-│   │   └── QRCodeDisplay.tsx
-│   ├── results/
-│   │   ├── ResultsBarChart.tsx
-│   │   ├── ResultsLeaderboard.tsx
-│   │   └── ResultsPercentageBar.tsx
-│   └── shared/
-│       ├── ConfirmDialog.tsx
-│       ├── EmptyState.tsx
-│       ├── LoadingSpinner.tsx
-│       └── ErrorMessage.tsx
-│
-├── pages/                  # Route-level page components
-│   ├── auth/
-│   │   ├── LoginPage.tsx
-│   │   ├── ForgotPasswordPage.tsx
-│   │   └── ResetPasswordPage.tsx
-│   ├── admin/
-│   │   ├── DashboardPage.tsx
-│   │   ├── PollListPage.tsx
-│   │   ├── PollCreatePage.tsx
-│   │   ├── PollEditPage.tsx
-│   │   ├── PollDetailPage.tsx
-│   │   └── ResultsDashboardPage.tsx
-│   ├── voter/
-│   │   ├── RoomCodeEntryPage.tsx
-│   │   ├── VotingPage.tsx
-│   │   └── VoteConfirmationPage.tsx
-│   └── public/
-│       ├── ProjectorResultsPage.tsx
-│       └── NotFoundPage.tsx
-│
-├── hooks/                  # Custom React hooks
-│   ├── useAuth.ts
-│   ├── usePoll.ts
-│   ├── useVote.ts
-│   ├── useLiveResults.ts
-│   ├── useVoterToken.ts
-│   └── usePollManagement.ts
-│
-├── store/                  # State management (Zustand)
-│   ├── authStore.ts
-│   ├── pollStore.ts
-│   └── voterStore.ts
-│
-├── types/                  # TypeScript interfaces
-│   ├── auth.types.ts
-│   ├── poll.types.ts
-│   ├── vote.types.ts
-│   └── api.types.ts
-│
-├── utils/                  # Helper functions
-│   ├── fingerprint.ts      # Device fingerprint generation
-│   ├── tokenStorage.ts     # Local storage token helpers
-│   ├── formatters.ts       # Number, date formatters
-│   └── constants.ts        # App-wide constants
-│
-├── router/
-│   └── index.tsx           # React Router v6 route definitions
-│
-└── App.tsx
-```
+**Stack:** React 19, TypeScript, Inertia.js v2, Tailwind v4, Vite 6, Ziggy, Laravel Echo (Reverb).
 
 ---
 
-## 2. Pages
+## 1. Model
 
-### Admin Pages
+There is no separate frontend app and no client-side router or global store. Laravel routes pick a
+page component and pass **typed props**; React owns local UI state only. Mutations go through
+Inertia (`router`/`useForm`); live updates arrive over Echo/Reverb hooks. The frozen `src/`
+prototype is design reference only and is **not** on the production import path (`@/*` → `resources/js`).
 
-| Page | Route | Purpose |
+---
+
+## 2. Folder Structure (`resources/js/`)
+
+```
+resources/js/
+├── app.tsx                 # Inertia entry (createInertiaApp)
+├── components/
+│   ├── ui/                 # Radix-based starter primitives (Dialog, etc.) — NOT shadcn
+│   └── showdown/
+│       ├── poll-form.tsx        # shared create/edit form
+│       ├── qr-share.tsx         # QR/share panel (qrcode.react)
+│       ├── countdown-badge.tsx  # renders server endsAt
+│       ├── option-badge.tsx     # option icon/image/badge
+│       └── flash-toast.tsx      # flash/toast feedback (replaces alert())
+├── hooks/
+│   ├── use-countdown.ts            # local countdown over server-authoritative endsAt
+│   ├── use-poll-channel.ts         # private/authed poll channel listener
+│   ├── use-public-poll-channel.ts  # public poll channel listener
+│   └── use-appearance.tsx          # forced light-only theme
+├── layouts/
+│   ├── showdown-layout.tsx   # primary authenticated shell
+│   ├── guest-layout.tsx      # sidebar-less public voting/results shell
+│   ├── app-layout.tsx + app/ # starter shell support
+│   ├── auth/                 # restyled auth layouts
+│   └── settings/layout.tsx   # settings shell
+├── pages/
+│   ├── welcome.tsx
+│   ├── dashboard.tsx
+│   ├── polls/{index,create,edit,show}.tsx
+│   ├── public-poll.tsx       # public guest voting
+│   ├── public-results.tsx    # public spectator/results
+│   ├── auth/*                # starter auth flows, restyled
+│   └── settings/*            # profile/password/appearance
+├── types/models.ts           # TS read-model contract (mirror of PHP presenters/events)
+└── lib/utils.ts
+```
+
+> No `api/`, `store/`, or `router/` directories — Inertia removes the need for an API client,
+> Zustand, and React Router.
+
+---
+
+## 3. Pages
+
+| Page | Inertia component | Responsibility |
 |---|---|---|
-| LoginPage | `/admin/login` | Admin email + password login |
-| ForgotPasswordPage | `/admin/forgot-password` | Request reset email |
-| ResetPasswordPage | `/admin/reset-password` | Set new password via token |
-| DashboardPage | `/admin` | Overview: poll count, recent activity |
-| PollListPage | `/admin/polls` | Filterable list of all polls |
-| PollCreatePage | `/admin/polls/create` | Form to create a new poll |
-| PollEditPage | `/admin/polls/:id/edit` | Edit draft poll |
-| PollDetailPage | `/admin/polls/:id` | Poll details, QR code, room code, actions |
-| ResultsDashboardPage | `/admin/polls/:id/results` | Live results + admin controls |
+| Landing | `welcome.tsx` | Public landing/auth entry (brutalist) |
+| Dashboard | `dashboard.tsx` | Role-aware: active poll, recent polls, metrics |
+| Poll list | `polls/index.tsx` | List + entry points |
+| Create / Edit | `polls/create.tsx`, `polls/edit.tsx` | Shared `poll-form` |
+| Poll show | `polls/show.tsx` | Authed show/results/voting/control surface |
+| Public vote | `public-poll.tsx` | No-login guest voting |
+| Public results | `public-results.tsx` | Spectator/projection + QR back to voting |
+| Auth / Settings | `auth/*`, `settings/*` | Starter flows, restyled |
 
-### Voter Pages
-
-| Page | Route | Purpose |
-|---|---|---|
-| RoomCodeEntryPage | `/` | Enter room code manually |
-| VotingPage | `/vote/:room_code` | Display poll and voting form |
-| VoteConfirmationPage | `/vote/:room_code/done` | Thank you screen after voting |
-
-### Public Pages
-
-| Page | Route | Purpose |
-|---|---|---|
-| ProjectorResultsPage | `/results/:room_code/live` | Fullscreen live results for display |
-| NotFoundPage | `*` | 404 fallback |
+Planned: dedicated voter audit/log page; magic-link landing if D2 needs distinct UI.
 
 ---
 
-## 3. Routing Structure
+## 4. Navigation, State & Data
 
-```
-/                          → RoomCodeEntryPage (public)
-/vote/:room_code           → VotingPage (public)
-/vote/:room_code/done      → VoteConfirmationPage (public)
-/results/:room_code/live   → ProjectorResultsPage (public, fullscreen)
-
-/admin                     → Protected route wrapper
-  /admin/login             → LoginPage
-  /admin/forgot-password   → ForgotPasswordPage
-  /admin/reset-password    → ResetPasswordPage
-  /admin/dashboard         → DashboardPage (auth required)
-  /admin/polls             → PollListPage (auth required)
-  /admin/polls/create      → PollCreatePage (auth required)
-  /admin/polls/:id         → PollDetailPage (auth required)
-  /admin/polls/:id/edit    → PollEditPage (auth required)
-  /admin/polls/:id/results → ResultsDashboardPage (auth required)
-```
-
-**Route Guards:**
-- `ProtectedRoute` component wraps all `/admin/dashboard` and deeper routes
-- Checks `authStore` for a valid token
-- Redirects to `/admin/login` if unauthenticated
-
----
-
-## 4. State Management (Zustand)
-
-### authStore
-```
-state:
-  - admin: Admin | null
-  - token: string | null
-  - isAuthenticated: boolean
-
-actions:
-  - login(email, password)
-  - logout()
-  - loadFromStorage()
-```
-
-### pollStore
-```
-state:
-  - polls: Poll[]
-  - currentPoll: Poll | null
-  - isLoading: boolean
-  - error: string | null
-
-actions:
-  - fetchPolls()
-  - fetchPoll(id)
-  - createPoll(data)
-  - updatePollStatus(id, status)
-  - duplicatePoll(id)
-  - deletePoll(id)
-  - resetPollResults(id)
-```
-
-### voterStore
-```
-state:
-  - currentPoll: PublicPoll | null
-  - hasVoted: boolean
-  - voterToken: string
-
-actions:
-  - loadPoll(room_code)
-  - submitVote(room_code, option_ids)
-  - checkIfVoted(room_code)
-```
+- **Routing:** server-side via Laravel; client transitions through Inertia links/`router.visit`.
+  `route()` (Ziggy) builds URLs in TS — always with the poll **UUID**.
+- **State:** React `useState`/`useForm` for local UI only. Server data is the source of truth,
+  delivered as props and refreshed by `router.reload({ only: [...] })` where needed.
+- **Mutations:** `router.post/put/delete` or `useForm`; results come back as redirects + flash.
+- **Auth/flash context:** shared Inertia props via `HandleInertiaRequests` (`auth`, `flash`).
 
 ---
 
 ## 5. Custom Hooks
 
-### useAuth
-Wraps authStore. Exposes `login()`, `logout()`, `isAuthenticated`, and the current `admin`.
-
-### usePoll(id)
-Fetches and returns a single poll. Handles loading and error states.
-
-### useVote(room_code)
-Handles the voter flow: loading poll, checking if already voted, submitting vote.
-
-### useLiveResults(room_code)
-Polls the results endpoint every 3 seconds. Returns sorted options with percentages. Stops polling when poll status is `closed`.
-
-### useVoterToken
-Generates or retrieves the device fingerprint token from localStorage. Used to prevent duplicate votes client-side.
-
-### usePollManagement(id)
-Exposes poll lifecycle actions: open, pause, close, archive, duplicate, delete, reset.
+- `useCountdown(endsAt)` — display countdown over server-authoritative `endsAt`.
+- `usePollChannel(uuid, handlers)` — private/authed poll channel: `onTally`, `onTicker`, `onStatus`.
+- `usePublicPollChannel(uuid, handlers)` — public channel for guest/results pages.
+- `useAppearance()` — forced light-only theme.
 
 ---
 
 ## 6. Key Components
 
-### PollCard
-Displays a poll summary in the admin list view. Shows title, status badge, vote count, room code, and action buttons.
-
-### QRCodeDisplay
-Renders the QR code image for a poll. Includes a download button and a copy-link button.
-
-### ResultsBarChart
-Horizontal bar chart built with a lightweight library (Recharts). Animates on update when new votes come in.
-
-### ResultsLeaderboard
-Ranks options from highest to lowest vote count. Updates in real time.
-
-### PollOptionItem (Voter View)
-Radio button (single-choice) or checkbox (multiple-choice) item. Shows option label clearly.
-
-### ConfirmDialog
-Reusable confirmation modal for destructive actions (delete, reset results).
-
-### PollStatusBadge
-Color-coded badge: draft (gray), active (green), paused (yellow), closed (red), archived (slate).
+- **PollForm** — shared create/edit form (options 2–10, end mode, optional password, option media).
+- **QrShare** — renders the poll's public vote/results URL as a QR (`qrcode.react`) with copy/share.
+- **CountdownBadge** — server-`endsAt`-driven countdown.
+- **OptionBadge** — renders an option's uploaded image, lucide icon, or color badge.
+- **FlashToast** — surfaces server flash messages (production feedback; no `alert()`).
+- Tally bars are **custom brutalist** components — no chart library (no Recharts).
 
 ---
 
-## 7. TypeScript Interfaces
+## 7. TypeScript Contract (`types/models.ts`)
 
-### Poll
-```typescript
-interface Poll {
-  id: number;
-  title: string;
-  description: string | null;
-  instructions: string | null;
-  type: 'single' | 'multiple';
-  status: 'draft' | 'active' | 'paused' | 'closed' | 'archived';
-  room_code: string;
-  voting_url: string;
-  qr_code_url: string | null;
-  total_votes: number;
-  options: PollOption[];
-  opened_at: string | null;
-  closed_at: string | null;
-  created_at: string;
-}
-```
+Mirror of `app/Enums/*`, `app/Support/PollPresenter.php`, and `*::broadcastWith()`. Current shapes:
 
-### PollOption
-```typescript
+```ts
+type PollStatus = 'draft' | 'active' | 'ended';
+type PollEndMode = 'duration' | 'deadline';
+
 interface PollOption {
   id: number;
-  poll_id: number;
   label: string;
-  vote_count: number;
-  display_order: number;
-  percentage?: number; // computed client-side
+  colorClass: string;
+  badgeColorClass: string;
+  imageUrl: string | null;
+  icon: string | null;
+  position: number;
+  count: number; // server-derived (read model)
 }
+
+interface Poll {
+  id: string;            // the public UUID (D15)
+  title: string;
+  description: string | null;
+  allowMultiple: boolean;
+  status: PollStatus;
+  requiresPassword: boolean;
+  unlocked: boolean;
+  endMode: PollEndMode;
+  durationSeconds: number | null;
+  deadlineAt: string | null;
+  endsAt: string | null;
+  remainingSeconds: number;
+  totalVotes: number;
+  hasVoted: boolean;
+  options: PollOption[];
+}
+
+interface VoterEntry { id: number; voterKey?: string; name: string; avatarText: string; avatarBgColor: string; votedOptionLabel: string | null; votedAt?: string; }
 ```
 
-### Admin
-```typescript
-interface Admin {
-  id: number;
-  name: string;
-  email: string;
-}
-```
+Plus `PollMetrics` and the realtime payloads (`TallyEntry`, `VoterTickedPayload`, `PollStatusPayload`).
+Keep this file in sync with the PHP presenters/events (drift is a bug — R7).
 
 ---
 
-## 8. API Client Pattern
+## 8. Real-Time Strategy
 
-All API calls go through typed wrapper functions in `src/api/`.
+Live updates use **Reverb + Echo**, already implemented — not HTTP polling.
 
-Each function:
-- Accepts typed parameters
-- Returns a typed Promise
-- Throws a normalized `ApiError` on failure
+- `usePollChannel` / `usePublicPollChannel` subscribe to `poll.{uuid}` and handle `.vote.cast`
+  (tally), `.voter.ticked` (ticker +1 animation), and `.poll.status` (status/endsAt).
+- The public results page keeps a light `router.reload` backstop **only** for when Reverb is
+  unreachable (R6) — correctness, not the primary transport.
+- Persistence never depends on broadcasting succeeding.
 
-The base client reads the Bearer token from `authStore` and attaches it to every request automatically.
-
----
-
-## 9. Real-Time Strategy
-
-For MVP (up to 500 concurrent voters), the frontend uses **polling** (HTTP interval requests):
-
-- `useLiveResults` calls `GET /api/v1/polls/:room_code/results` every 3 seconds
-- Stops polling when poll status is `closed`
-- Displays a subtle "live" indicator while actively polling
-- Shows last updated timestamp
-
-For scale beyond 500 voters, the polling interval can be increased server-side or the client can be upgraded to SSE without changing the component interface — only `useLiveResults` needs to change.
+See [`../07-realtime.md`](../07-realtime.md).

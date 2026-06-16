@@ -1,159 +1,139 @@
 # Security Review
-# QR Voting Application
+# Vote Showdown
 
-**Version:** 1.0
+> **Realigned to the source of truth.** Rewritten for the actual stack (Inertia session auth,
+> `voter_key` dedupe, Reverb). The earlier version assumed Sanctum tokens, device-fingerprint
+> voting, and a `voter_sessions` table — none of which exist here. Related: the
+> `security-audit-agent` (`.claude/agents/`) audits code against this checklist.
 
 ---
 
 ## 1. Duplicate Vote Prevention
 
-This is the most critical security concern for a public, anonymous voting system.
+The core integrity concern. Defense is layered around the **canonical `voter_key`** (D19), not a
+browser fingerprint.
 
-### Strategy: Three-Layer Defense
+**Layer 1 — Canonical voter identity (`voter_key`)**
+- Every vote carries `user:{id}` (authenticated), `email:{email}` (guest by email), or
+  `token:{token}` (guest by device cookie, the email fallback).
+- Guests are not user accounts; their identity is stored on the vote row.
 
-**Layer 1 — Database Unique Constraint**
-- `votes` table has a `UNIQUE(poll_id, voter_token)` index
-- This is the hard, non-bypassable server-side guard
-- Even if the client sends multiple requests, only one will succeed
+**Layer 2 — Database unique index**
+- `UNIQUE(poll_id, poll_option_id, voter_key)` — the hard, non-bypassable guard. Concurrent
+  duplicate submissions can't both persist.
 
-**Layer 2 — Voter Token (Hashed Device Fingerprint)**
-- On page load, the voter's browser generates a fingerprint from: `User-Agent`, `screen resolution`, `timezone`, `language`, `canvas fingerprint`, `WebGL fingerprint`
-- These signals are combined and hashed (SHA-256) client-side
-- The hash is stored in `localStorage` under a poll-specific key
-- The same hash is sent with the vote submission
-- The server hashes it again before storing — raw fingerprint data never persists
+**Layer 3 — Application lock for single-choice (R2)**
+- Single-choice (one vote per `(poll_id, voter_key)`) is enforced by a per-`voter_key`-per-poll
+  `Cache::lock` in `VoteService` (a partial unique index isn't portable to MySQL).
 
-**Layer 3 — Session Token**
-- On first visit to a poll page, the server issues a short-lived session token
-- Stored in `localStorage`
-- Checked via `voter_sessions` table before accepting a vote
+**Round reset.** A `restart` wipes votes and sets a new `starts_at`; the per-device `voted_poll_{uuid}`
+cookie is keyed to the round so the same voter may vote again in the new round.
 
-**Limitations:**
-- Determined users in incognito + VPN can bypass fingerprinting
-- This is acceptable — the system targets casual/accidental duplicate votes, not determined adversaries
-- For high-stakes votes, additional controls (email OTP, etc.) should be added as a future enhancement
+**Limitations.** A determined user with multiple emails/devices can still cast multiple votes; this
+targets casual/accidental duplicates. High-stakes polls would need email verification or
+private/invite-only polls (open decision).
 
 ---
 
-## 2. Rate Limiting
+## 2. Rate Limiting (as configured — tune under load, R4)
 
-Apply Laravel's built-in throttle middleware:
+| Route | Limit |
+|---|---|
+| POST `/polls` (create) | `throttle:6,1` |
+| POST `/p/{poll}/vote` (guest vote) | `throttle:20,1` |
+| POST `/polls/{poll}/unlock` | `throttle:20,1` |
+| GET `/polls/{poll}/join` (QR) | `throttle:30,1` |
+| POST `/polls/{poll}/votes` (authed vote) | named `votes` limiter |
+| Auth routes | starter-kit throttling |
 
-| Endpoint | Limit | Scope |
-|---|---|---|
-| POST /auth/login | 5 / min | Per IP |
-| POST /auth/forgot-password | 3 / min | Per IP |
-| POST /polls/:code/vote | 3 / min | Per IP |
-| GET /polls/:code/results | 30 / min | Per IP |
-| GET /polls/validate/:code | 20 / min | Per IP |
-| All other admin endpoints | 60 / min | Per token |
-
-Rate limit responses return HTTP `429 Too Many Requests` with a `Retry-After` header.
+Throttled responses return HTTP `429`. Finalize numbers with the `load-test-agent` evidence and
+assert them in Pest.
 
 ---
 
 ## 3. CSRF Protection
 
-- Laravel's CSRF protection is enabled for all non-API (web) routes
-- The API uses Sanctum token authentication — token-based auth is inherently CSRF-resistant for API routes
-- SPA (React) communicates via Bearer token in the `Authorization` header, not cookies
-- If cookies are used for auth, include the `X-XSRF-TOKEN` header per Laravel Sanctum documentation
+- Web/session routes are CSRF-protected by Laravel by default; Inertia forwards the `XSRF-TOKEN`.
+- Voting and controls are **web POSTs with session + CSRF**, not a token API — there is no Bearer
+  flow to bypass. The narrow public guest endpoints are still CSRF-protected web routes.
 
 ---
 
 ## 4. XSS Prevention
 
-**Server-side:**
-- All text inputs (poll title, description, options) are stored as plain text
-- All API responses return JSON — no HTML rendering on the server side
-
-**Client-side (React):**
-- React escapes all values rendered via JSX by default
-- Never use `dangerouslySetInnerHTML` with user-generated content
-- Sanitize any rich text fields (description/instructions) with DOMPurify if you ever add HTML support
-
-**Content Security Policy (CSP):**
-- Set a strict CSP header on the server
-- Disallow inline scripts
-- Allow only known CDN sources for external assets
+**Server:** poll titles, descriptions, option labels, and guest names are stored as plain text and
+passed as Inertia props.
+**Client (React):** JSX escapes interpolated values by default; **never** use
+`dangerouslySetInnerHTML` on user-generated content. Option `icon` is a named lucide icon (allowlist),
+not raw HTML/SVG.
+**CSP:** set a strict Content-Security-Policy at the web server; disallow inline scripts; allow only
+known asset/WebSocket (Reverb) origins.
 
 ---
 
 ## 5. SQL Injection Prevention
 
-- All database queries must use Laravel Eloquent ORM or Query Builder with parameterized bindings
-- Never concatenate user input directly into raw SQL strings
-- If raw queries are necessary, always use `DB::select()` with named bindings
-- Input validation runs before any query is executed
+- All queries use Eloquent / the query builder with parameter binding. No string-interpolated SQL.
+- Route-model binding resolves polls by **UUID**, validated by Laravel before any query runs.
+- Input is validated in FormRequests before controller/service logic.
 
 ---
 
-## 6. Room Code Security
+## 6. Authorization
 
-- Room codes are 6-character uppercase alphanumeric strings (excluding ambiguous characters)
-- Total keyspace: ~28 million combinations (excluding O, 0, I, 1, L from 36 chars = 31 chars → 31^6 ≈ 887 million, then filtered)
-- Rate limiting on the validate endpoint (20 / min per IP) makes brute-force enumeration impractical
-- Room codes are only active while a poll status is `active`
-- Expired/closed poll codes return `422` with a `status` field — they do not reveal other poll details
-
----
-
-## 7. QR Code Abuse Prevention
-
-- QR codes encode the public voting URL only — no admin tokens or secrets
-- QR code images are stored server-side; the URL path does not expose internal IDs
-- QR codes for closed polls resolve to the same validation endpoint which returns `422`
-- No additional security is needed beyond poll status validation
+- Server-side only; UI visibility is convenience.
+- `EnsureUserHasRole` (`role:admin`) gates admin routes (delete, add-time, User Management).
+- `PollPolicy` decides create/view/update/launch/close/restart/delete and vote moderation.
+- Owner-or-admin: edit/close/restart. Admin-only: delete, add-time, vote moderation (D18), user CRUD (D16).
+- One active poll per creator on launch (D1).
+- **User Management safeguards (D16):** validate `role` against the enum; block self-demotion,
+  self-deletion, and removal of the last admin; set privilege fields only through the audited path.
 
 ---
 
-## 8. API Protection
+## 7. Public / Guest & QR Abuse
 
-**Authentication:**
-- Sanctum Bearer token required for all `/admin/*` routes
-- Tokens are stored server-side and can be revoked on logout
-- Token expiry: configurable, recommend 8 hours for admin sessions
-
-**Authorization:**
-- Admins can only access their own polls — enforce with `where('admin_id', auth()->id())` on all poll queries
-- Never expose other admins' polls or data
-
-**Input Validation:**
-- All request inputs validated with Laravel Form Requests before controller logic runs
-- Reject unexpected fields (use `$request->validated()` only)
-
-**Response Hardening:**
-- Never return stack traces or database errors in production responses
-- Use Laravel's `APP_DEBUG=false` in production
-- Return generic `500` messages — log details server-side only
+- `/p/{poll}` (vote), `/r/{poll}` (results), `/polls/{poll}/join` (QR), and `/polls/{poll}/unlock`
+  are intentionally public — verify each stays scoped to the bound poll and respects status.
+- Votes are accepted only while `status = active` and before `ends_at`; ended/expired/draft polls reject.
+- Password-gated polls (D9) reject votes until unlocked; wrong password is rejected at `unlock`.
+- QR/share links encode only the **public UUID URL** — no secrets, no internal id.
+- Rate limits (above) blunt enumeration/flooding; dedupe blunts ballot stuffing.
 
 ---
 
-## 9. Admin Account Security
+## 8. Real-time / Channel Security
 
-- Passwords hashed with bcrypt (Laravel default, cost factor 12+)
-- Password reset tokens expire after 60 minutes
-- Failed login attempts are rate-limited (5 per minute)
-- No admin self-registration — accounts are seeded or created via CLI
-- Consider enforcing a minimum password length of 12 characters
-
----
-
-## 10. Infrastructure Security
-
-- HTTPS enforced on all routes (SSL/TLS via Let's Encrypt on VPS)
-- HTTP → HTTPS redirect at the web server level (Nginx)
-- Database not exposed to the public internet — accessible only from the application server
-- `.env` file excluded from version control (`.gitignore`)
-- Sensitive environment variables: `APP_KEY`, `DB_PASSWORD`, `MAIL_PASSWORD` stored securely
-- Server firewall: allow only ports 80, 443, and SSH (22 with key-only auth)
+- Private channel auth lives in `routes/channels.php`. In the current public-showdown model any
+  authenticated user may listen to `poll.{uuid}`; public pages use the open public channel.
+- If private/invite-only polls become a requirement, **channel authorization and public route
+  access must be tightened together** (open decision).
+- Broadcast payloads carry only presenter-shaped, non-sensitive fields (tally, ticker name/avatar,
+  status). Persistence tolerates an unreachable broadcaster (R6).
 
 ---
 
-## 11. Data Privacy
+## 9. Account Security
 
-- No personal voter data is stored
-- `voter_token` is a SHA-256 hash — the original fingerprint is discarded
-- `ip_address` is stored in votes for abuse investigation only — not linked to any voter identity
-- `voter_sessions` records are purged after `expires_at` via a scheduled cleanup job
-- Admins should be informed of this in the system documentation
+- Passwords hashed with Laravel's default (bcrypt/argon). Password reset via the starter kit.
+- Auth routes rate-limited. New-signup default role is `creator` (elevation policy is an open decision).
+- Admin accounts created via the audited User Management path (D16) or seeder, not ad-hoc role writes.
+
+---
+
+## 10. Data Privacy
+
+- No browser fingerprint is stored. Guest identity on a vote is the email/name the guest supplied
+  plus a random device `voter_token`.
+- **Visit stats (D17) store only a salted IP hash**, never a raw IP (R13); backend/admin only, no public UI.
+- `voted_poll_{uuid}` and `voter_token` cookies are convenience/dedupe signals; server-side checks
+  remain authoritative.
+
+---
+
+## 11. Infrastructure
+
+- HTTPS enforced (TLS); HTTP→HTTPS at the web server. MySQL not exposed publicly.
+- `.env` out of version control; `APP_KEY`/`DB_*`/`MAIL_*`/Reverb secrets stored securely.
+- `APP_DEBUG=false`, `APP_ENV=production`; generic 500s, details logged server-side only.
+- Reverb WebSocket port firewalled to the app/web tier; Redis not publicly reachable.

@@ -1,423 +1,227 @@
 # CODEX.md
-# QR Voting Application — Developer Reference
+# Vote Showdown — Developer Reference
 
-> Read this before touching any code. This is the single source of truth for how this project is structured, built, and maintained.
+> **Realigned to the source of truth.** This file was rewritten to match the actual
+> Vote Showdown stack (Laravel 12 + Inertia v2 + React 19 + Reverb). The earlier
+> "QR Voting Application" version described a different architecture (REST API + Sanctum +
+> standalone SPA) that we are **not** adopting — see [`comparison.md`](comparison.md).
+> The canonical docs live in [`../README.md`](../README.md); this is a secondary quick reference.
 
 ---
 
 ## 1. Project Overview
 
-A web-based voting platform where administrators create polls and voters participate by scanning a QR code or entering a room code. Voters do not need an account. Voting is anonymous. The system prevents duplicate votes using a three-layer fingerprint strategy. Admins manage the full poll lifecycle and monitor live results in real time.
+A cartoony Neo-Brutalist real-time voting app. Authenticated **Poll Creators** and **Admins**
+build polls; anyone can vote — logged in, or as a public guest by email/device. Voting is
+deduped per canonical `voter_key`, tallies are derived from vote rows, and results update live
+over WebSockets. The frozen `src/` prototype is design reference only.
 
 ---
 
-## 2. Tech Stack
+## 2. Tech Stack (do not change without a source-of-truth decision)
 
-| Layer | Technology | Version |
+| Layer | Technology | Notes |
 |---|---|---|
-| Backend language | PHP | 8.3 |
-| Backend framework | Laravel | 12 |
-| Database | MySQL | 8 |
-| Auth | Laravel Sanctum | latest |
-| QR Code | bacon/bacon-qr-code | latest |
-| Frontend framework | React | 19 |
-| Frontend language | TypeScript | 5.x |
-| Styling | Tailwind CSS | 3.x |
-| UI Components | shadcn/ui | latest |
-| State management | Zustand | latest |
-| Routing | React Router | v6 |
-| Charts | Recharts | latest |
-| HTTP client | Axios | latest |
-| Testing (backend) | Pest | latest |
-| Testing (frontend) | Vitest + React Testing Library | latest |
-| E2E testing | Playwright | latest |
-| Server | Linux VPS + Nginx | — |
-| SSL | Let's Encrypt (Certbot) | — |
+| Backend framework | Laravel 12 | — |
+| Server↔client | **Inertia.js v2** | Not a REST API. Controllers return `Inertia::render`. |
+| Database | MySQL 8 | — |
+| Auth | Laravel starter (session web guard) | Login/register/reset/verify/settings from the starter kit. **No Sanctum token API.** |
+| Roles | `users.role` enum | `admin` / `creator` (see D20). No separate `admins` table. |
+| Real-time | **Laravel Reverb + Echo** (`@laravel/echo-react`) | Already implemented. |
+| Frontend framework | React 19 | Pages mounted by Inertia, not React Router. |
+| Frontend language | TypeScript | `resources/js/types/models.ts` mirrors PHP presenters/events. |
+| Routing helper | Ziggy | `route()` in TS. |
+| Styling | **Tailwind v4** | Brutalist tokens in `resources/css/app.css`. No shadcn/ui. |
+| UI primitives | Radix-based starter set under `resources/js/components/ui/` | — |
+| QR | `qrcode.react` | Generated client-side; no stored QR images. |
+| Build | Vite 6 | `npm run build`. |
+| Testing (backend) | **Pest** | Feature + unit. |
+| Frontend verification | ESLint, TypeScript via build, `npm run build` | No Vitest/Playwright in the stack today. |
+| Server | Forge/VPS + web server + TLS | Redis + Supervisor for queue/Reverb/scheduler in prod. |
+
+> State/data is owned by the server and passed as Inertia props. There is **no** Zustand,
+> React Router, or Axios layer — Inertia's `router` and `useForm` cover navigation and mutations.
 
 ---
 
-## 3. Project Structure
-
-### Backend (Laravel)
+## 3. Project Structure (single Laravel app, not split front/back)
 
 ```
-/
-├── app/
-│   ├── Http/
-│   │   ├── Controllers/
-│   │   │   ├── Auth/               # Login, logout, password reset
-│   │   │   ├── Admin/              # Poll CRUD, lifecycle, results
-│   │   │   └── Voter/              # Room code access, vote submission
-│   │   ├── Requests/               # Form validation classes (one per endpoint)
-│   │   ├── Resources/              # API response transformers
-│   │   └── Middleware/             # Rate limiting, auth guards
-│   ├── Models/                     # Eloquent models
-│   ├── Services/                   # Business logic (VoteService, PollService)
-│   ├── Events/                     # Broadcast events (VoteSubmitted)
-│   └── Listeners/                  # Event listeners
-├── database/
-│   ├── migrations/                 # One file per table
-│   ├── seeders/                    # AdminSeeder, SamplePollSeeder
-│   └── factories/                  # Model factories for testing
-├── routes/
-│   ├── api.php                     # All API routes
-│   └── web.php                     # Only used for password reset redirect
-├── storage/
-│   └── app/public/qrcodes/         # Generated QR code images
-├── tests/
-│   ├── Feature/                    # API endpoint tests
-│   └── Unit/                       # Service and logic tests
-└── .env                            # Environment config (never commit)
-```
-
-### Frontend (React)
-
-```
-src/
-├── api/                            # Typed API call functions
-│   ├── auth.ts
-│   ├── polls.ts
-│   ├── voting.ts
-│   └── results.ts
-├── components/
-│   ├── ui/                         # shadcn/ui base components
-│   ├── layout/                     # AdminLayout, VoterLayout, Navbar
-│   ├── polls/                      # PollCard, PollStatusBadge, QRCodeDisplay
-│   ├── results/                    # ResultsBarChart, ResultsLeaderboard
-│   └── shared/                     # ConfirmDialog, LoadingSpinner, ErrorMessage
-├── pages/
-│   ├── auth/                       # Login, ForgotPassword, ResetPassword
-│   ├── admin/                      # Dashboard, PollList, PollCreate, PollDetail, Results
-│   ├── voter/                      # RoomCodeEntry, Voting, VoteConfirmation
-│   └── public/                     # ProjectorResults, NotFound
-├── hooks/                          # useAuth, usePoll, useVote, useLiveResults, useVoterToken
-├── store/                          # Zustand stores: authStore, pollStore, voterStore
-├── types/                          # TypeScript interfaces for all models
-├── utils/                          # fingerprint.ts, tokenStorage.ts, formatters.ts
-└── router/index.tsx                # All route definitions
+app/
+  Enums/            UserRole, PollStatus
+  Events/           VoteCast, VoterTicked, PollStatusChanged
+  Http/
+    Controllers/    Dashboard, Poll, PublicPoll, Vote, Admin/ShowControl, Admin/User, Auth, Settings
+    Middleware/     HandleInertiaRequests, EnsureUserHasRole
+    Requests/       Store/Update poll, vote, guest vote, auth/settings requests
+  Models/           User, Poll, PollOption, Vote (+ PollVisit, planned D17)
+  Policies/         PollPolicy (+ UserPolicy, planned D16)
+  Services/         PollService, VoteService (+ PollVisitService, planned D17)
+  Support/          PollPresenter, VoterPresenter, VoterIdentity
+database/
+  migrations/       users, polls, poll_options, votes (+ poll_visits, planned D17)
+  factories/        User, Poll, PollOption, Vote
+  seeders/          UserSeeder, DefaultPollsSeeder
+resources/
+  css/app.css       Tailwind v4 theme + brutalist tokens
+  js/
+    app.tsx         Inertia entry (createInertiaApp)
+    components/      app shell, ui/ primitives, showdown/ components
+    hooks/           use-countdown, use-poll-channel, use-public-poll-channel, use-appearance
+    layouts/         showdown / guest / app / auth / settings layouts
+    pages/           dashboard, polls/*, public-poll, public-results, auth/*, settings/*, welcome
+    types/models.ts  TS read-model contract (mirror of PHP presenters/events)
+routes/
+  web.php           Inertia pages, public/guest, voting, QR join, controls, admin users
+  auth.php          auth routes
+  settings.php      settings routes
+  channels.php      broadcast channel authorization
+  console.php       scheduled expired-poll auto-end
+src/                FROZEN prototype — design reference only, not imported in production
+tests/              Pest unit + feature
 ```
 
 ---
 
-## 4. Local Development Setup
+## 4. Local Development
 
-### Prerequisites
-- PHP 8.3
-- MySQL 8
-
-### Backend Setup
+Prereqs: PHP 8.x, Composer, Node, MySQL 8 (Reverb + scheduler added to local orchestration when
+live-testing realtime).
 
 ```
-1. Clone the repository
-2. cd into the backend folder
-3. Run: composer install
-4. Copy .env.example to .env
-5. Fill in DB credentials and APP_KEY in .env
-6. Run: php artisan key:generate
-7. Run: php artisan migrate
-8. Run: php artisan db:seed
-9. Run: php artisan storage:link
-10. Run: php artisan serve
+composer install
+npm install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan storage:link        # required for option image rendering (D10a)
+composer dev                    # Laravel server + queue listener + Vite
+# or: npm run dev (Vite only)
 ```
 
-### Frontend Setup
-
-```
-1. cd into the frontend folder
-2. Run: npm install
-3. Copy .env.example to .env
-4. Set VITE_API_BASE_URL to your Laravel local URL
-5. Run: npm run dev
-```
-
-### Verify Setup
-- Backend API available at: `http://localhost:8000/api/v1`
-- Frontend available at: `http://localhost:5173`
-- Default admin account: seeded via `AdminSeeder` (see `.env.example` for credentials)
+Default admin is created by `UserSeeder` (dev/bootstrap only). Other accounts come from
+admin User Management (D16).
 
 ---
 
-## 5. Environment Variables
-
-### Backend (.env)
-
-| Key | Required | Example | Purpose |
-|---|---|---|---|
-| `APP_NAME` | Yes | `QR Voting` | App display name |
-| `APP_ENV` | Yes | `local` | Environment mode |
-| `APP_KEY` | Yes | generated | Encryption key |
-| `APP_DEBUG` | Yes | `true` (local), `false` (prod) | Show errors |
-| `APP_URL` | Yes | `http://localhost:8000` | Base URL |
-| `DB_HOST` | Yes | `127.0.0.1` | Database host |
-| `DB_PORT` | Yes | `3306` | Database port |
-| `DB_DATABASE` | Yes | `qr_voting` | Database name |
-| `DB_USERNAME` | Yes | `root` | Database user |
-| `DB_PASSWORD` | Yes | `secret` | Database password |
-| `SANCTUM_STATEFUL_DOMAINS` | Yes | `localhost:5173` | Allowed SPA origins |
-| `MAIL_MAILER` | Yes | `smtp` | Mail driver |
-| `MAIL_HOST` | Yes | `smtp.mailtrap.io` | SMTP host |
-| `MAIL_PORT` | Yes | `587` | SMTP port |
-| `MAIL_USERNAME` | Yes | — | SMTP user |
-| `MAIL_PASSWORD` | Yes | — | SMTP password |
-| `MAIL_FROM_ADDRESS` | Yes | `noreply@app.com` | From address |
-| `QUEUE_CONNECTION` | No | `sync` (local), `database` (prod) | Queue driver |
-| `SESSION_LIFETIME` | No | `480` | Session timeout in minutes |
-
-### Frontend (.env)
-
-| Key | Required | Example | Purpose |
-|---|---|---|---|
-| `VITE_API_BASE_URL` | Yes | `http://localhost:8000/api/v1` | API base URL |
-| `VITE_APP_NAME` | No | `QR Voting` | App display name |
-
----
-
-## 6. Coding Standards & Conventions
+## 5. Coding Standards & Conventions
 
 ### PHP / Laravel
-- **Classes:** PascalCase — `PollController`, `VoteService`
-- **Methods:** camelCase — `submitVote()`, `generateRoomCode()`
-- **Variables:** camelCase — `$pollId`, `$voterToken`
-- **Database columns:** snake_case — `poll_id`, `voter_token`, `created_at`
-- **Routes:** kebab-case — `/admin/poll-options`, `/vote/room-code`
-- **One controller per resource** — do not put voter logic in admin controllers
-- **All business logic goes in Services** — controllers are thin, they call services
-- **All request validation goes in Form Request classes** — never validate in controllers
-- **All API responses go through Resource classes** — never return raw Eloquent models
+- **Controllers stay thin.** Validation → FormRequests, authorization → Policies, business logic → Services.
+- **Tallies are derived from `votes`** — never trust client-sent counts (D3).
+- **Inertia, not REST.** Controllers return `Inertia::render`; the only non-Inertia endpoints are
+  the narrow operational ones (vote, controls, unlock, public guest vote, broadcast auth).
+- **Props are camelCase**, shaped by `PollPresenter` / `VoterPresenter`.
+- Classes PascalCase, methods/vars camelCase, DB columns snake_case.
 
 ### TypeScript / React
-- **Components:** PascalCase files and function names — `PollCard.tsx`
-- **Hooks:** camelCase with `use` prefix — `useVoterToken.ts`
-- **Store files:** camelCase with `Store` suffix — `authStore.ts`
-- **Type files:** camelCase with `.types.ts` suffix — `poll.types.ts`
-- **All props must be typed** — no `any` types allowed
-- **No inline styles** — use Tailwind classes only
-- **No `dangerouslySetInnerHTML`** — ever
+- Components PascalCase; hooks `useX`. Props typed — no `any`.
+- Tailwind classes only; no inline styles. **No `dangerouslySetInnerHTML`** on user content.
+- Keep `resources/js/types/models.ts` in sync with `app/Enums/*`, `PollPresenter`, and
+  `*::broadcastWith()`.
+- Local UI state only; server data arrives as props or via Echo hooks.
 
-### Database
-- All tables use `id` as primary key (BIGINT UNSIGNED, AUTO_INCREMENT)
-- All tables have `created_at` and `updated_at` timestamps
-- Soft-deletable tables have `deleted_at`
-- Foreign key column names match the pattern: `{table_singular}_id`
-- All indexes named explicitly: `idx_{table}_{column}`
+### Design
+- Cartoony Neo-Brutalist look from `src/`: thick black outlines, hard offset shadows, bright flat
+  palette, playful motion, hype copy. See [`../design-reference.md`](../design-reference.md).
+- Production feedback uses flash/toast — `alert()` belongs only to the frozen prototype.
 
-### Git
-- **Branch naming:**
-  - `feature/poll-creation`
-  - `fix/duplicate-vote-bug`
-  - `chore/update-dependencies`
-  - `hotfix/room-code-validation`
-- **Commit format:** `type: short description`
-  - `feat: add poll duplication endpoint`
-  - `fix: prevent duplicate vote on concurrent request`
-  - `chore: add migration for voter_sessions`
-  - `test: add vote submission feature test`
-- **Never commit directly to `main`**
-- **`main`** = production-ready only
-- **`develop`** = integration branch
-- Feature branches merge into `develop` via pull request
+### Docs
+- Update `docs/`, `CLAUDE.md`, and `README.md` in the **same change** as any feature/schema/route/
+  convention change (drift is treated as a bug — risk R7).
 
 ---
 
-## 7. Architecture Decisions
+## 6. Key Business Rules
 
-### Why Sanctum over Passport?
-This app only needs token-based authentication for a simple admin SPA. Passport adds OAuth complexity that is not needed here. Sanctum is the correct choice for first-party SPA authentication.
-
-### Why Zustand over Redux?
-Redux adds boilerplate that is unnecessary for an app of this size. Zustand provides the same global state with a fraction of the setup. If the app grows significantly, migration to Redux Toolkit is straightforward.
-
-### Why HTTP Polling over WebSockets for MVP?
-Setting up Laravel Reverb or a WebSocket server adds infrastructure complexity. For up to 500 concurrent voters, polling the results endpoint every 3 seconds is sufficient and reliable. The `useLiveResults` hook abstracts the transport layer — upgrading to SSE or Reverb only requires changing the hook internals, not the components.
-
-### Real-time upgrade path by scale:
-- **Up to 500 voters:** HTTP polling every 3 seconds
-- **500–2,000 voters:** Server-Sent Events (SSE) via Laravel `StreamedResponse`
-- **2,000–10,000 voters:** Laravel Reverb (WebSockets) with a dedicated process
-
-### Why denormalized vote counts?
-`polls.total_votes` and `poll_options.vote_count` are maintained as counters rather than computed via `COUNT()` on every results request. This prevents expensive aggregation queries under high read load. Both counters are updated atomically inside a database transaction when a vote is submitted.
-
-### Why a separate `vote_options` pivot table?
-A single `votes` table with a column for option IDs would require serialized arrays or JSON, making queries complex and indexes ineffective. The `vote_options` pivot supports both single and multiple-choice polls cleanly with standard relational queries.
-
----
-
-## 8. Key Business Rules
-
-These rules must always be enforced. They are validated at both the API and database levels.
-
-| Rule | Where Enforced |
+| Rule | Where enforced |
 |---|---|
-| A poll must have minimum 2 options | Form Request validation + DB check in PollService |
-| A poll must have maximum 10 options | Form Request validation |
-| A poll can only be edited when status is `draft` | PollService status check before update |
-| A voter can only vote once per poll | UNIQUE(poll_id, voter_token) DB constraint |
-| Single-choice polls accept exactly 1 option_id | Form Request validation |
-| Multiple-choice polls accept 1 or more option_ids | Form Request validation |
-| Only options belonging to the poll can be selected | VoteService validates option ownership |
-| Vote counts must update atomically | DB transaction with increment — never raw update |
-| All admin poll actions must be logged | AuditLog entry created in every PollService method |
-| Admins can only manage their own polls | All admin queries scoped by `admin_id = auth()->id()` |
+| 2–10 options per poll | `StorePollRequest`/`UpdatePollRequest` |
+| One active poll per creator (on launch) | `PollService` (D1) |
+| Edit/launch: owning creator or admin | `PollPolicy` |
+| Delete: admin only | `PollPolicy` |
+| Close/restart: owning creator or admin | `PollPolicy` |
+| Add-time: admin only | route `role:admin` + policy |
+| Vote only while active & before `ends_at` | `VoteService` / `Poll::hasExpired()` |
+| One vote per `voter_key` (single-choice) | `Cache::lock` + DB unique index |
+| Password-gated polls require unlock first | `PollController@unlock` + `Poll::isUnlocked()` (D9) |
+| Tallies recompute from rows after vote/moderation | `VoteService` (D3) |
+| Public id is the UUID; int id never exposed | `PollPresenter` + `getRouteKeyName()` (D15) |
 
-### Poll Status Transition Rules
-
+### Poll status transitions
 ```
-draft → active       (open)
-active → paused      (pause)
-active → closed      (close)
-paused → active      (reopen)
-paused → closed      (close)
-closed → archived    (archive)
-closed → active      (reopen — resets nothing, just reopens)
-any status → deleted (soft delete — admin only)
+draft  → active   (launch)
+active → ended    (close, or settleIfExpired / scheduled sweep when ends_at passes)
+ended  → active   (restart — clears votes, new starts_at/ends_at)
 ```
-
-Attempting an invalid transition returns HTTP `422` with a descriptive message.
+Status enum is `draft | active | ended`. There is no `paused`/`archived` state.
 
 ---
 
-## 9. API Conventions
+## 7. Architecture Decisions (why this stack)
 
-**Base URL:** `/api/v1`
+- **Inertia over a REST API + SPA (D5).** One Laravel app renders typed props into React pages;
+  no token API, no client router, no separate state store. Removes a whole class of API/contract drift.
+- **Reverb/Echo over polling.** Live tally/ticker/status push over WebSockets is already built; the
+  public results page keeps a lightweight reload backstop only for when Reverb is unreachable (R6).
+- **Derived tallies (D3).** Counts come from `COUNT(votes …)` (exposed via `withCount`), not a
+  writable counter — correctness over premature denormalization. `polls.visits_count` is the one
+  intentional denormalized counter (D17), and only for visit stats.
+- **`voter_key` dedupe (D19).** A vote carries `user:{id}` / `email:{email}` / `token:{token}`;
+  guests are not user accounts. No device-fingerprint/`voter_sessions` layer.
+- **UUID public identity (D15).** `polls.uuid` is the route key and channel name; the bigint PK and
+  all FKs stay integer for performance.
 
-**Authentication:** Bearer token in `Authorization` header
+---
+
+## 8. Real-time
+
+| Event | Broadcast name | Payload | Channels |
+|---|---|---|---|
+| `VoteCast` | `.vote.cast` | `pollId`, `tally` | private + public `poll.{uuid}` |
+| `VoterTicked` | `.voter.ticked` | `pollId`, `voter` | private + public `poll.{uuid}` |
+| `PollStatusChanged` | `.poll.status` | `pollId`, `status`, `endsAt`, `remainingSeconds` | private + public `poll.{uuid}` |
+
+`VoteCast` is coalesced to ~4/s per poll; `VoterTicked` is per-vote. Vote persistence must succeed
+even if broadcasting fails. See [`../07-realtime.md`](../07-realtime.md).
+
+---
+
+## 9. Commands
+
 ```
-Authorization: Bearer {token}
+composer dev        # server + queue + vite
+npm run dev         # vite only
+npm run build       # production frontend build
+npm run lint        # ESLint --fix
+npm run format      # Prettier over resources/
+php artisan test    # Pest
 ```
 
-**Standard success response:**
-```json
-{
-  "data": { },
-  "message": "Optional success message"
-}
-```
+---
 
-**Standard error response:**
-```json
-{
-  "message": "Human-readable error description",
-  "errors": {
-    "field_name": ["Validation error message"]
-  }
-}
-```
+## 10. Deployment
 
-**Pagination format:**
-```json
-{
-  "data": [ ],
-  "meta": {
-    "current_page": 1,
-    "last_page": 5,
-    "per_page": 15,
-    "total": 72
-  }
-}
-```
+Forge/VPS target: web server + TLS, MySQL 8, Redis (cache/queue/locks/coalescing), Supervisor for
+queue worker + Reverb + `schedule:run` (expired-poll auto-end). Production checklist: `APP_DEBUG=false`,
+`APP_ENV=production`, `php artisan storage:link`, SSL auto-renew, DB not publicly exposed, `.env`
+out of version control. Full plan: [`../09-execution-checklist.md`](../09-execution-checklist.md) Phase 6.
 
-**HTTP status codes used:**
+---
 
-| Code | When |
+## 11. Document Index (this folder)
+
+| Document | Purpose (realigned) |
 |---|---|
-| 200 | Successful GET, PUT, POST (non-create) |
-| 201 | Successful resource creation |
-| 401 | Unauthenticated |
-| 403 | Authenticated but not authorized |
-| 404 | Resource not found |
-| 409 | Conflict — e.g., duplicate vote |
-| 422 | Validation failure |
-| 429 | Rate limit exceeded |
-| 500 | Unexpected server error |
+| `comparison.md` | What to adopt vs. reject from the original QR-app spec |
+| `PRD.md` | Product scope, adapted to the current stack/roles |
+| `DATABASE_DESIGN.md` | Actual schema (users/polls/poll_options/votes, +poll_visits) |
+| `API_DESIGN.md` | Inertia routes + the narrow operational endpoints (not REST) |
+| `FRONTEND_ARCHITECTURE.md` | Inertia pages/layouts/hooks (no Router/Zustand/shadcn) |
+| `SECURITY.md` | voter_key dedupe, rate limits, XSS/SQLi/CSRF, privacy |
+| `USER_STORIES.md` | Stories by role (Admin / Poll Creator / Voter-guest) |
+| `ROADMAP.md` | Remaining work, mapped to the execution checklist |
+| `QA_TEST_PLAN.md` | Pest + manual + load test cases for this stack |
 
-**Rate limits:**
-
-| Endpoint | Limit |
-|---|---|
-| POST /auth/login | 5 / min per IP |
-| POST /polls/:code/vote | 3 / min per IP |
-| GET /polls/*/results | 30 / min per IP |
-| All admin endpoints | 60 / min per token |
-
----
-
-## 10. Database Conventions
-
-- All primary keys: `id BIGINT UNSIGNED AUTO_INCREMENT`
-- All tables have: `created_at TIMESTAMP`, `updated_at TIMESTAMP`
-- Soft-deletable models have: `deleted_at TIMESTAMP NULL`
-- Foreign keys always cascade on delete unless there is a business reason not to
-- Vote counts (`total_votes`, `vote_count`) are denormalized — always updated via `DB::table()->increment()` inside a transaction, never via Eloquent `save()`
-- Room codes are 6-character uppercase alphanumeric, excluding ambiguous characters: `0`, `O`, `1`, `I`, `L`
-- All audit log entries are written by `AuditLogService::log()` — never write directly to the table from a controller
-
----
-
-## 11. Testing
-
-### Run backend tests
-```
-php artisan test
-```
-
-### Run frontend tests
-```
-npm run test
-```
-
-### Run E2E tests
-```
-npx playwright test
-```
-
-### What requires a test before merging:
-- Every new API endpoint needs a Feature test
-- Every Service method needs a Unit test
-- Every React hook needs a hook test
-- The full voter flow (enter room code → vote → confirm) must have an E2E test
-- The duplicate vote prevention logic must have a concurrency test
-
----
-
-## 12. Deployment
-
-Deployment targets a Linux VPS running Nginx + PHP 8.3 + MySQL 8.
-
-Quick deploy steps:
-```
-1. Push to main branch
-2. SSH into VPS
-3. Pull latest: git pull origin main
-4. Install dependencies: composer install --no-dev
-5. Run migrations: php artisan migrate --force
-6. Build frontend: npm run build
-7. Restart queue worker: php artisan queue:restart
-8. Clear cache: php artisan optimize
-```
-
-Full deployment details are in `ROADMAP.md` → Phase 7.
-
-**Critical production checklist:**
-- `APP_DEBUG=false`
-- `APP_ENV=production`
-- Storage linked: `php artisan storage:link`
-- SSL active and auto-renewing
-- Database not exposed to public internet
-- `.env` not in version control
-
----
-
-## 13. Document Index
-
-| Document | Purpose |
-|---|---|
-| `PRD.md` | What the app does, MVP scope, all requirements |
-| `DATABASE_DESIGN.md` | All tables, columns, indexes, relationships |
-| `API_DESIGN.md` | Every endpoint with request and response payloads |
-| `FRONTEND_ARCHITECTURE.md` | Folder structure, pages, hooks, state, routing |
-| `SECURITY.md` | Duplicate vote strategy, rate limits, all security concerns |
-| `USER_STORIES.md` | What admins and voters need, in plain language |
-| `ROADMAP.md` | Phased plan with hours, risks, and dependencies |
-| `QA_TEST_PLAN.md` | All test cases, load tests, and pre-launch checklist |
-| `CODEX.md` | This file — read first |
+> The authoritative specs are the numbered docs in [`../`](../). When this folder and those
+> disagree, the numbered docs win.

@@ -1,8 +1,12 @@
 # Database Design
-# QR Voting Application
+# Vote Showdown
 
-**Stack:** MySQL 8  
-**Version:** 1.0
+> **Realigned to the source of truth.** Rewritten to match the actual MySQL 8 schema. The earlier
+> version described a different model (`admins`, `room_code`/`voting_url`, fingerprint
+> `voter_sessions`, `vote_options` pivot, `audit_logs`, denormalized vote counters) that does
+> **not** match this app. Canonical schema: [`../03-database.md`](../03-database.md).
+
+**Stack:** MySQL 8
 
 ---
 
@@ -10,254 +14,179 @@
 
 | Table | Purpose |
 |---|---|
-| admins | Admin user accounts |
-| polls | Poll definitions |
+| users | All accounts (admins, creators, claimable guests) — one table, role on a column |
+| polls | Poll definitions; public identity is a UUID |
 | poll_options | Options/choices within a poll |
-| votes | Individual vote records |
-| voter_sessions | Tracks devices that have voted |
-| audit_logs | Records all admin actions |
+| votes | One row per voter per chosen option; deduped by `voter_key` |
+| poll_visits *(planned, D17)* | Backend/admin visit statistics, salted IP hash only |
+
+Plus Laravel standard tables: `password_reset_tokens`, `sessions`, `cache`, `jobs`/`job_batches`/`failed_jobs`.
+
+> There is **no** separate `admins` table, **no** `room_code`/`voting_url` columns, **no**
+> `voter_sessions`, **no** `vote_options` pivot, and **no** `audit_logs` table in the current build.
+> (Audit logging is a *candidate* addition — see [`comparison.md`](comparison.md) — not a built table.)
 
 ---
 
 ## 2. Table Definitions
 
----
+### 2.1 users
 
-### 2.1 admins
+One table for every account. Roles live on a column (no roles table, no `admins` table).
 
-Stores admin user accounts. No voter accounts exist.
-
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| name | VARCHAR(100) | NOT NULL | |
-| email | VARCHAR(150) | NOT NULL, UNIQUE | |
-| password | VARCHAR(255) | NOT NULL | Bcrypt hashed |
-| remember_token | VARCHAR(100) | NULLABLE | Laravel standard |
-| created_at | TIMESTAMP | NOT NULL | |
-| updated_at | TIMESTAMP | NOT NULL | |
-
-**Indexes:**
-- PRIMARY KEY: `id`
-- UNIQUE INDEX: `email`
-
----
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | Internal identity |
+| name | VARCHAR | |
+| email | VARCHAR UNIQUE | |
+| email_verified_at | TIMESTAMP NULL | |
+| password | VARCHAR | bcrypt/argon (Laravel hash) |
+| role | ENUM('admin','creator') DEFAULT 'creator' | D19/D20 — no "invitee"/Voter role |
+| avatar_text | VARCHAR(4) NULL | e.g. "JD" |
+| avatar_bg_color | VARCHAR DEFAULT 'bg-[#9cf0ff]' | brutalist swatch |
+| is_demo | BOOL DEFAULT 0, INDEX | seed/demo voters, purgeable (M1) |
+| is_guest | BOOL DEFAULT 0, INDEX | claimable email-only guest account (D8) |
+| remember_token | VARCHAR(100) NULL | |
+| created_at / updated_at | TIMESTAMP | |
 
 ### 2.2 polls
 
-Stores all poll definitions created by admins.
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | Internal only — never exposed |
+| uuid | UUID UNIQUE, INDEX | **Public route key** (D15); `getRouteKeyName() => 'uuid'` |
+| creator_id | BIGINT UNSIGNED FK → users.id, cascade | Owner |
+| title | VARCHAR | |
+| description | TEXT NULL | |
+| allow_multiple | BOOL DEFAULT 0 | single- vs multiple-choice |
+| status | ENUM('draft','active','ended') DEFAULT 'draft', INDEX | no paused/archived |
+| access_password | VARCHAR NULL | hashed; null = open poll (D9) |
+| end_mode | ENUM('duration','deadline') DEFAULT 'duration' | how `ends_at` is resolved |
+| duration_seconds | INT UNSIGNED NULL | used when end_mode = duration |
+| deadline_at | TIMESTAMP NULL | used when end_mode = deadline |
+| starts_at | TIMESTAMP NULL | set on launch |
+| ends_at | TIMESTAMP NULL, INDEX | **server-authoritative end** |
+| visits_count | INT UNSIGNED DEFAULT 0 | denormalized visit total (D17) |
+| created_at / updated_at | TIMESTAMP | |
 
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| admin_id | BIGINT UNSIGNED | NOT NULL, FK → admins.id | Owner |
-| title | VARCHAR(255) | NOT NULL | |
-| description | TEXT | NULLABLE | |
-| instructions | TEXT | NULLABLE | |
-| type | ENUM('single', 'multiple') | NOT NULL, DEFAULT 'single' | |
-| status | ENUM('draft','active','paused','closed','archived') | NOT NULL, DEFAULT 'draft' | |
-| room_code | VARCHAR(10) | NOT NULL, UNIQUE | Auto-generated, uppercase alphanumeric |
-| voting_url | VARCHAR(255) | NOT NULL, UNIQUE | Slug-based URL |
-| qr_code_path | VARCHAR(255) | NULLABLE | File path to stored QR image |
-| total_votes | INT UNSIGNED | NOT NULL, DEFAULT 0 | Denormalized counter |
-| opened_at | TIMESTAMP | NULLABLE | When poll was last opened |
-| closed_at | TIMESTAMP | NULLABLE | When poll was last closed |
-| deleted_at | TIMESTAMP | NULLABLE | Soft delete |
-| created_at | TIMESTAMP | NOT NULL | |
-| updated_at | TIMESTAMP | NOT NULL | |
-
-**Indexes:**
-- PRIMARY KEY: `id`
-- UNIQUE INDEX: `room_code`
-- UNIQUE INDEX: `voting_url`
-- INDEX: `admin_id`
-- INDEX: `status`
-
-**Relationships:**
-- Belongs to `admins` via `admin_id`
-- Has many `poll_options`
-- Has many `votes`
-- Has many `voter_sessions`
-
----
+**End mode.** `duration` → `ends_at = starts_at + duration_seconds` (computed at launch);
+`deadline` → `ends_at = deadline_at`. The rest of the app (`isActive`, `remainingSeconds`, the
+scheduler sweep, broadcasts) reads only `ends_at`.
 
 ### 2.3 poll_options
 
-Stores individual choices for each poll.
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| poll_id | BIGINT UNSIGNED FK → polls.id, cascade | |
+| label | VARCHAR | option text |
+| color_class | VARCHAR DEFAULT 'bg-[#00e3fd]' | bar color (brutalist) |
+| badge_color_class | VARCHAR | badge color |
+| image_path | VARCHAR NULL | uploaded image, public disk (D10) |
+| icon | VARCHAR NULL | OR a named lucide icon (D10) |
+| position | SMALLINT UNSIGNED DEFAULT 0 | display order |
+| created_at / updated_at | TIMESTAMP | |
+| INDEX | (poll_id, position) | |
 
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| poll_id | BIGINT UNSIGNED | NOT NULL, FK → polls.id | Cascade delete |
-| label | VARCHAR(255) | NOT NULL | The text of the option |
-| vote_count | INT UNSIGNED | NOT NULL, DEFAULT 0 | Denormalized for fast reads |
-| display_order | TINYINT UNSIGNED | NOT NULL, DEFAULT 0 | Sort order in UI |
-| created_at | TIMESTAMP | NOT NULL | |
-| updated_at | TIMESTAMP | NOT NULL | |
-
-**Indexes:**
-- PRIMARY KEY: `id`
-- INDEX: `poll_id`
-- COMPOSITE INDEX: `(poll_id, display_order)`
-
-**Relationships:**
-- Belongs to `polls` via `poll_id`
-- Referenced by `votes` (many-to-many via vote_option pivot)
-
-**Constraints:**
-- Application-level: minimum 2 options, maximum 10 options per poll
-
----
+App-level constraint: 2–10 options per poll. **No `vote_count` column** — counts are derived.
 
 ### 2.4 votes
 
-Stores one record per voter per poll. For multiple-choice polls, selected options are stored in `vote_options`.
+One row per voter per chosen option. For single-choice that's one row per voter; for
+multiple-choice, one row per selected option.
 
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| poll_id | BIGINT UNSIGNED | NOT NULL, FK → polls.id | |
-| voter_token | VARCHAR(64) | NOT NULL | Hashed device fingerprint token |
-| ip_address | VARCHAR(45) | NULLABLE | IPv4 or IPv6 |
-| user_agent | TEXT | NULLABLE | Browser info |
-| created_at | TIMESTAMP | NOT NULL | |
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| poll_id | BIGINT UNSIGNED FK → polls.id, cascade | |
+| poll_option_id | BIGINT UNSIGNED FK → poll_options.id, cascade | |
+| user_id | BIGINT UNSIGNED FK → users.id, cascade, **nullable** | set only for authenticated voters |
+| voter_key | string | canonical identity: `user:{id}` / `email:{email}` / `token:{token}` (D19) |
+| voter_email / voter_name / voter_token | string NULL | guest identity stored on the vote |
+| created_at / updated_at | TIMESTAMP | |
+| UNIQUE | (poll_id, poll_option_id, voter_key) | hard dedupe |
+| INDEX | (poll_id, poll_option_id) | fast tally |
 
-**Indexes:**
-- PRIMARY KEY: `id`
-- INDEX: `poll_id`
-- UNIQUE COMPOSITE INDEX: `(poll_id, voter_token)` — prevents duplicate votes
-- INDEX: `ip_address`
+> **Dedupe.** Multiple-choice is hard-guarded by the unique index. Single-choice (one vote per
+> `(poll_id, voter_key)`) is additionally enforced by a per-`voter_key`-per-poll `Cache::lock` in
+> `VoteService`, because a partial unique index isn't portable to MySQL. See [`../modules/voting.md`](../modules/voting.md).
+>
+> **No personal fingerprint store.** There is no `voter_sessions` table and no canvas/WebGL
+> fingerprint. Guest dedupe is the email or a long-lived `voter_token` device cookie.
 
-**Relationships:**
-- Belongs to `polls`
-- Has many `vote_options` (pivot)
+### 2.5 poll_visits *(planned — D17)*
 
-**Note:** No personal voter identity is stored. `voter_token` is a hashed composite of device signals.
+Backend/admin visit statistics. One row per recorded access, deduped one-per-session-per-poll.
 
----
+| Column | Type | Notes |
+|---|---|---|
+| id | BIGINT UNSIGNED PK | |
+| poll_id | BIGINT UNSIGNED FK → polls.id, cascade | |
+| user_id | BIGINT UNSIGNED FK → users.id, nullOnDelete, **nullable** | null for logged-out guests |
+| ip_hash | VARCHAR(64) NULL | **salted hash only** — never raw IP (R13) |
+| user_agent | VARCHAR NULL | |
+| visited_at | TIMESTAMP, INDEX | |
+| INDEX | (poll_id, visited_at) | |
 
-### 2.5 vote_options
-
-Pivot table linking votes to selected poll options. Supports both single and multiple-choice polls.
-
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| vote_id | BIGINT UNSIGNED | NOT NULL, FK → votes.id | Cascade delete |
-| poll_option_id | BIGINT UNSIGNED | NOT NULL, FK → poll_options.id | |
-
-**Indexes:**
-- PRIMARY KEY: `id`
-- INDEX: `vote_id`
-- INDEX: `poll_option_id`
-- UNIQUE COMPOSITE INDEX: `(vote_id, poll_option_id)`
-
----
-
-### 2.6 voter_sessions
-
-Tracks which devices have voted per poll. Used as a secondary duplicate-vote guard alongside the `votes.voter_token` unique index.
-
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| poll_id | BIGINT UNSIGNED | NOT NULL, FK → polls.id | |
-| session_token | VARCHAR(64) | NOT NULL | Hashed session identifier |
-| fingerprint_hash | VARCHAR(64) | NULLABLE | Browser fingerprint hash |
-| has_voted | TINYINT(1) | NOT NULL, DEFAULT 0 | |
-| voted_at | TIMESTAMP | NULLABLE | |
-| expires_at | TIMESTAMP | NULLABLE | TTL for cleanup |
-| created_at | TIMESTAMP | NOT NULL | |
-
-**Indexes:**
-- PRIMARY KEY: `id`
-- UNIQUE COMPOSITE INDEX: `(poll_id, session_token)`
-- INDEX: `expires_at` — for cleanup jobs
-
----
-
-### 2.7 audit_logs
-
-Records all significant admin actions for accountability and debugging.
-
-| Column | Type | Constraints | Notes |
-|---|---|---|---|
-| id | BIGINT UNSIGNED | PK, AUTO_INCREMENT | |
-| admin_id | BIGINT UNSIGNED | NULLABLE, FK → admins.id | Null if system action |
-| action | VARCHAR(100) | NOT NULL | e.g., `poll.created`, `poll.closed` |
-| auditable_type | VARCHAR(100) | NULLABLE | Polymorphic model name |
-| auditable_id | BIGINT UNSIGNED | NULLABLE | Polymorphic model ID |
-| old_values | JSON | NULLABLE | Before state |
-| new_values | JSON | NULLABLE | After state |
-| ip_address | VARCHAR(45) | NULLABLE | |
-| user_agent | TEXT | NULLABLE | |
-| created_at | TIMESTAMP | NOT NULL | |
-
-**Indexes:**
-- PRIMARY KEY: `id`
-- INDEX: `admin_id`
-- INDEX: `(auditable_type, auditable_id)`
-- INDEX: `action`
-- INDEX: `created_at`
-
-**Logged Actions:**
-- `poll.created`
-- `poll.opened`
-- `poll.paused`
-- `poll.closed`
-- `poll.archived`
-- `poll.deleted`
-- `poll.duplicated`
-- `poll.results_reset`
-- `admin.login`
-- `admin.logout`
-- `admin.password_reset`
+`polls.visits_count` is the denormalized total for cheap reads; unique visitors and visit→vote
+conversion are computed from the rows. No public visit UI.
 
 ---
 
 ## 3. Entity Relationship Summary
 
 ```
-admins
-  └── polls (one admin → many polls)
+users
+  └── polls            (creator_id; one creator → many polls)
         ├── poll_options (one poll → 2–10 options)
-        ├── votes (one poll → many votes)
-        │     └── vote_options (one vote → one or more options)
-        └── voter_sessions (one poll → many sessions)
+        ├── votes        (one poll → many votes; deduped by voter_key)
+        └── poll_visits  (planned, D17; one poll → many visits)
 
-audit_logs
-  └── linked to admins (nullable)
-  └── polymorphic link to any model
+votes.user_id → users  (nullable; set only for authenticated voters)
 ```
 
 ---
 
-## 4. Normalization Review
+## 4. Design Notes
 
-- **admins**: 3NF — no repeating groups, no partial or transitive dependencies
-- **polls**: 3NF — `total_votes` is intentionally denormalized for read performance; updated via DB transaction when a vote is cast
-- **poll_options**: 3NF — `vote_count` is denormalized for the same reason
-- **votes**: 3NF — `voter_token` stores a hash, not raw fingerprint data
-- **vote_options**: Pure pivot — correctly separates the many-to-many relationship
-- **voter_sessions**: 3NF — session tracking is separate from the vote record
-- **audit_logs**: Uses polymorphic design to avoid one audit table per model
-
----
-
-## 5. Scalability Considerations
-
-- `total_votes` and `vote_count` are denormalized counters to avoid expensive COUNT() queries on the results page under high load
-- Both counters must be updated atomically using DB increment inside a transaction when a vote is submitted
-- `voter_sessions.expires_at` allows a scheduled job to purge stale session records
-- `votes` table will grow large over time — partition by `poll_id` or archive old polls
-- Add a read replica for the results query path if concurrency exceeds 2,000 voters
-- `audit_logs` should be moved to a separate database or log service at large scale
+- **Tallies are derived (D3).** Option count = `COUNT(votes WHERE poll_option_id = ?)`, exposed via
+  `withCount`. The `count` on an option prop is a read model, never writable. No `vote_count`/
+  `total_votes` columns.
+- **Voters are not accounts (D19).** Guest identity lives on the vote (`voter_email`, `voter_name`,
+  `voter_token`), keyed by `voter_key`. `votes.user_id` is null for guests.
+- **Server-authoritative timer.** `polls.ends_at` is the truth; the client only renders remaining seconds.
+- **Roles on `users.role`** — three fixed concepts (Admin, Poll Creator, and guest voters who are
+  not accounts), no dynamic permission tables.
+- **Public identity is UUID (D15);** internal PK/FKs stay bigint for performance — sequential ids
+  never leak into URLs/QRs/channels.
+- **Cosmetic fields persisted** (`color_class`, `badge_color_class`, `avatar_text`, `avatar_bg_color`)
+  so the brutalist look survives a round-trip; seeded from `src/data.ts`.
 
 ---
 
-## 6. Room Code Generation Rules
+## 5. Scalability Considerations (without breaking D3)
 
-- 6 characters, uppercase alphanumeric
-- Exclude ambiguous characters: `0`, `O`, `1`, `I`, `L`
-- Check uniqueness against `polls.room_code` before saving
-- Retry up to 5 times on collision before throwing an error
+- Tally reads lean on the `(poll_id, poll_option_id)` index. If a hot poll's COUNT path becomes the
+  proven bottleneck under load testing, prefer **Redis-cached tallies / coalescing** before
+  introducing a denormalized counter (which would conflict with D3). Decide with load-test evidence
+  (see [`comparison.md`](comparison.md), open decision D-new-4).
+- `votes` grows over time; archive old polls or partition by `poll_id` only if data volume warrants.
+- Visit stats use the denormalized `polls.visits_count` plus deduped `poll_visits` rows to avoid
+  expensive recounts.
+
+---
+
+## 6. Migrations
+
+Order matters (FKs). One migration per table. `polls.uuid` (D15), `polls.visits_count` (D17), and
+`poll_visits` (D17) ship as additive follow-on migrations (with a uuid backfill for existing rows),
+not by rewriting the original `create_polls` migration. Exact `Schema::create` blocks live in
+[`../03-database.md`](../03-database.md).
+
+## 7. Seeders & Factories
+
+- `UserSeeder` — a single Super Admin for fresh installs (dev/bootstrap only).
+- `DefaultPollsSeeder` — ports the prototype polls + colors; seeded counts need real `votes` rows
+  (tally is derived), so demo voters are tagged (`is_demo`) and purgeable; local/staging only.
+- Factories: `UserFactory` (`->admin()/->creator()/->demo()`), `PollFactory` (`->active()/->ended()/->draft()`),
+  `PollOptionFactory`, `VoteFactory`.
