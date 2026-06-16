@@ -27,13 +27,15 @@ export default function PublicResults({ poll, voters: initialVoters }: ResultsPr
     const [endsAt, setEndsAt] = useState<string | null>(poll.endsAt);
     const [bumps, setBumps] = useState<Bump[]>([]);
 
-    // Sync from server props (initial + the polling backstop below).
+    // Sync from server props (initial + the polling backstop below). Voters are re-synced
+    // too — otherwise the list (seeded once at mount, then only grown by the live ticker)
+    // gets dropped on the reload that fires when the poll settles. Mirrors polls/show.
     useEffect(() => {
         setTally(poll.options.map((o) => ({ poll_option_id: o.id, label: o.label, count: o.count })));
         setStatus(poll.status);
         setEndsAt(poll.endsAt);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [poll]);
+        setVoters(initialVoters);
+    }, [poll, initialVoters]);
 
     const remaining = useCountdown(endsAt);
     const isActive = status === 'active' && remaining > 0;
