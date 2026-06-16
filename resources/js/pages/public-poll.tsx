@@ -193,8 +193,11 @@ export default function PublicPoll({ poll, voters, hasVoted: initialVoted }: Pub
                                         const pct = Math.round((opt.count / total) * 100);
                                         return (
                                             <div key={opt.id}>
-                                                <div className="mb-2 flex justify-between font-mono text-xs font-bold uppercase">
-                                                    <span>{opt.label}</span>
+                                                <div className="mb-2 flex items-center justify-between font-mono text-xs font-bold uppercase">
+                                                    <span className="flex items-center gap-2">
+                                                        <OptionBadge option={opt} size="sm" />
+                                                        {opt.label}
+                                                    </span>
                                                     <span>{pct}% ({opt.count})</span>
                                                 </div>
                                                 <div className="h-9 w-full overflow-hidden rounded-lg border-[3px] border-[#1b1b1b] bg-zinc-100">

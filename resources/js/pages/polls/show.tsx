@@ -18,9 +18,10 @@ interface ShowProps {
     canClose: boolean;
     canEdit: boolean;
     canDelete: boolean;
+    canModerateVotes: boolean;
 }
 
-export default function PollsShow({ poll, voters: initialVoters, canControl, canRestart, canClose, canEdit, canDelete }: ShowProps) {
+export default function PollsShow({ poll, voters: initialVoters, canControl, canRestart, canClose, canEdit, canDelete, canModerateVotes }: ShowProps) {
     const { auth } = usePage<SharedData>().props;
 
     const [tally, setTally] = useState<TallyEntry[]>(() => poll.options.map((o) => ({ poll_option_id: o.id, label: o.label, count: o.count })));
@@ -341,6 +342,36 @@ export default function PollsShow({ poll, voters: initialVoters, canControl, can
                                             <p className="truncate text-sm font-extrabold leading-tight">{v.name}</p>
                                             <p className="font-mono text-[10px] text-zinc-500 uppercase">Voted: {v.votedOptionLabel}</p>
                                         </div>
+                                        {canModerateVotes && v.voterKey && (
+                                            <Dialog>
+                                                <DialogTrigger asChild>
+                                                    <button title="Remove this voter's vote" className="ml-auto shrink-0 cursor-pointer rounded-lg border-[2px] border-[#1b1b1b] bg-red-100 p-1.5 text-red-700 transition-colors hover:bg-red-200">
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </DialogTrigger>
+                                                <DialogContent className="border-[3px] border-[#1b1b1b] bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                                                    <DialogTitle className="font-black uppercase">Remove this voter's vote?</DialogTitle>
+                                                    <DialogDescription className="text-zinc-600">
+                                                        This deletes {v.name}'s vote(s) on this poll and updates the tally for everyone. This cannot be undone.
+                                                    </DialogDescription>
+                                                    <DialogFooter>
+                                                        <DialogClose asChild>
+                                                            <button className="rounded-lg border-[2px] border-[#1b1b1b] bg-white px-4 py-2 font-mono text-xs font-bold uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                                                Cancel
+                                                            </button>
+                                                        </DialogClose>
+                                                        <DialogClose asChild>
+                                                            <button
+                                                                onClick={() => router.delete(route('polls.voter-votes.destroy', poll.id), { data: { voter_key: v.voterKey }, preserveScroll: true })}
+                                                                className="rounded-lg border-[2px] border-[#1b1b1b] bg-red-200 px-4 py-2 font-mono text-xs font-black uppercase text-red-800 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                                            >
+                                                                Remove vote
+                                                            </button>
+                                                        </DialogClose>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        )}
                                     </div>
                                 ))}
                             </div>

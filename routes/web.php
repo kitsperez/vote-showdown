@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\ShowControlController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PollController;
 use App\Http\Controllers\PublicPollController;
@@ -50,6 +51,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:votes')
         ->name('polls.votes.store');
 
+    // Admin moderation (D18): delete a specific voter's votes on a poll, by voter_key
+    // (PollPolicy@deleteVotes). Voters aren't user accounts, so the key travels in the body.
+    Route::delete('polls/{poll}/voter-votes', [VoteController::class, 'destroyForVoter'])
+        ->name('polls.voter-votes.destroy');
+
     // Close — owning creator OR admin (PollPolicy@close), so NOT behind role:admin.
     Route::post('polls/{poll}/control/close', [ShowControlController::class, 'close'])->name('polls.control.close');
 
@@ -64,6 +70,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->group(function () {
             Route::post('add-time', 'addSeconds')->name('add-time');
         });
+
+    // Admin-only User Management (D16).
+    Route::middleware('role:admin')->group(function () {
+        Route::resource('admin/users', UserController::class)
+            ->except(['show'])
+            ->names('admin.users');
+    });
 });
 
 require __DIR__.'/settings.php';

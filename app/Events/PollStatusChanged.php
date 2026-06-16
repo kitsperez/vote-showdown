@@ -28,8 +28,8 @@ class PollStatusChanged implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("poll.{$this->poll->id}"),
-            new Channel("poll.{$this->poll->id}"),
+            new PrivateChannel("poll.{$this->poll->uuid}"),
+            new Channel("poll.{$this->poll->uuid}"),
         ];
     }
 
@@ -44,7 +44,7 @@ class PollStatusChanged implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'pollId' => $this->poll->id,
+            'pollId' => $this->poll->uuid,
             'status' => $this->poll->status->value,
             'endsAt' => $this->poll->ends_at?->toIso8601String(),
             'remainingSeconds' => $this->poll->remainingSeconds(),

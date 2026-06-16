@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Enums\PollStatus;
-use App\Enums\UserRole;
 use App\Models\Poll;
 use App\Models\User;
 use App\Models\Vote;
@@ -12,8 +11,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * Ports `src/data.ts` defaultPolls. Counts are seeded as REAL vote rows (the tally is
- * derived, never a column). Demo voters are tagged is_demo so they can't masquerade as
- * real accounts and are purgeable in one query (risk M1). Local/staging only.
+ * derived, never a column). Voters are not user accounts (D19) — demo votes carry a
+ * `voter_key`/`voter_email` on a clearly-tagged `@demo.showdown` domain. Local/staging only.
  */
 class DefaultPollsSeeder extends Seeder
 {
@@ -21,9 +20,6 @@ class DefaultPollsSeeder extends Seeder
     {
         $creator = User::query()->where('email', 'creator@showdown.test')->first()
             ?? User::factory()->creator()->create(['email' => 'creator@showdown.test']);
-
-        // Pool of demo voters reused across polls (one vote per user per poll).
-        $pool = User::factory()->count(200)->invitee()->demo()->create();
 
         $polls = [
             [
@@ -74,8 +70,7 @@ class DefaultPollsSeeder extends Seeder
                 'ends_at' => $isActive ? now()->addSeconds($data['duration']) : now()->subMinutes(58),
             ]);
 
-            // Distinct voters per poll (single-choice). Shuffle the pool per poll.
-            $voters = $pool->shuffle()->values();
+            // Distinct demo voters per poll (single-choice), keyed by email — no user rows.
             $cursor = 0;
 
             foreach ($data['options'] as $position => [$label, $color, $badge, $count]) {
@@ -87,11 +82,15 @@ class DefaultPollsSeeder extends Seeder
                 ]);
 
                 $rows = [];
-                for ($i = 0; $i < $count && $cursor < $voters->count(); $i++, $cursor++) {
+                for ($i = 0; $i < $count; $i++, $cursor++) {
+                    $email = "demo{$cursor}@demo.showdown";
                     $rows[] = [
                         'poll_id' => $poll->id,
                         'poll_option_id' => $option->id,
-                        'user_id' => $voters[$cursor]->id,
+                        'user_id' => null,
+                        'voter_key' => 'email:'.$email,
+                        'voter_email' => $email,
+                        'voter_name' => 'Demo Voter '.$cursor,
                         'created_at' => Carbon::now()->subSeconds(random_int(1, 600)),
                         'updated_at' => now(),
                     ];

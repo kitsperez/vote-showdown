@@ -28,19 +28,19 @@ it('lets a creator create and launch a poll', function () {
         ->and($poll->ends_at)->not->toBeNull();
 });
 
-it('allows any authenticated user (incl. an invitee) to create a poll', function () {
-    $invitee = User::factory()->invitee()->create();
+it('allows any authenticated user (a creator) to create a poll', function () {
+    $creator = User::factory()->creator()->create();
 
-    $this->actingAs($invitee)
+    $this->actingAs($creator)
         ->post(route('polls.store'), [
-            'title' => 'Invitee poll',
+            'title' => 'Creator poll',
             'end_mode' => 'duration',
             'duration_seconds' => 120,
             'options' => [['label' => 'a'], ['label' => 'b']],
         ])
         ->assertRedirect();
 
-    expect(Poll::where('creator_id', $invitee->id)->exists())->toBeTrue();
+    expect(Poll::where('creator_id', $creator->id)->exists())->toBeTrue();
 });
 
 it('rejects fewer than two options', function () {

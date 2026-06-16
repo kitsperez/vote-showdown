@@ -13,7 +13,7 @@ interface PollChannelHandlers {
  * same events also fan out to the private channel for the authed page. Handlers held in
  * a ref so changing them doesn't re-subscribe.
  */
-export function usePublicPollChannel(pollId: number, handlers: PollChannelHandlers): void {
+export function usePublicPollChannel(pollId: string, handlers: PollChannelHandlers): void {
     const ref = useRef(handlers);
     ref.current = handlers;
 

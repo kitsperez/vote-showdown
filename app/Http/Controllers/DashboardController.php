@@ -41,14 +41,24 @@ class DashboardController extends Controller
      */
     private function metrics(Poll $poll): array
     {
-        $totalVoters = $poll->votes()->distinct('user_id')->count('user_id');
+        $totalVoters = $poll->votes()->distinct('voter_key')->count('voter_key');
         $recentWindow = $poll->votes()->where('created_at', '>=', now()->subSeconds(60))->count();
+
+        // Visit statistics (D17): total accesses + unique visitors, and the visit→vote
+        // conversion now backs a real engagement rate instead of the old proxy.
+        $totalVisits = (int) $poll->visits_count;
+        $uniqueVisitors = $poll->visits()
+            ->selectRaw('COUNT(DISTINCT COALESCE(user_id, ip_hash)) AS aggregate')
+            ->value('aggregate');
+        $uniqueVisitors = (int) $uniqueVisitors;
 
         return [
             'totalVoters' => $totalVoters,
             'velocityPerMinute' => $recentWindow,
-            // Engagement denominator is an open decision; trailing-window proxy for now.
-            'engagementRate' => $totalVoters > 0 ? min(99, 60 + $recentWindow) : 0,
+            'totalVisits' => $totalVisits,
+            'uniqueVisitors' => $uniqueVisitors,
+            // Engagement = unique voters / unique visitors (D17 resolves the open denominator).
+            'engagementRate' => $uniqueVisitors > 0 ? (int) round(min(100, $totalVoters / $uniqueVisitors * 100)) : 0,
         ];
     }
 }

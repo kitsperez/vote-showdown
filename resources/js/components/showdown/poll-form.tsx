@@ -1,6 +1,6 @@
 import type { FormDataConvertible } from '@inertiajs/core';
 import { useForm } from '@inertiajs/react';
-import { PlusCircle, Rocket, Trash2 } from 'lucide-react';
+import { ImagePlus, PlusCircle, Rocket, Trash2 } from 'lucide-react';
 
 // Brutalist palette cycled per option, mirroring the prototype.
 const PALETTE = [
@@ -102,41 +102,43 @@ export function PollForm({ initial, submitUrl, method = 'post', submitLabel, loc
                     <p className="mb-2 font-mono text-[10px] text-amber-600 uppercase">Votes exist — you can edit labels/images but not add or remove options.</p>
                 )}
                 <div className="flex flex-col gap-3">
-                    {data.options.map((opt, i) => (
-                        <div key={opt.id ?? `new-${i}`} className="flex items-center gap-3">
-                            <label className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border-[3px] border-[#1b1b1b] font-mono text-xs font-bold ${PALETTE[i % PALETTE.length].color}`} title="Upload image">
-                                {opt.image ? (
-                                    <img src={URL.createObjectURL(opt.image)} alt="" className="h-full w-full object-cover" />
-                                ) : opt.imageUrl ? (
-                                    <img src={opt.imageUrl} alt="" className="h-full w-full object-cover" />
-                                ) : opt.icon ? (
-                                    <span className="text-xl leading-none">{opt.icon}</span>
-                                ) : (
-                                    String(i + 1).padStart(2, '0')
+                    {data.options.map((opt, i) => {
+                        const imageError = (errors as Record<string, string>)[`options.${i}.image`];
+                        return (
+                        <div key={opt.id ?? `new-${i}`} className="flex flex-col gap-1">
+                            <div className="flex items-center gap-3">
+                                <label className={`group relative flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border-[3px] border-[#1b1b1b] font-mono text-xs font-bold ${PALETTE[i % PALETTE.length].color}`} title="Upload image (JPG/PNG/WebP)">
+                                    {opt.image ? (
+                                        <img src={URL.createObjectURL(opt.image)} alt="" className="h-full w-full object-cover" />
+                                    ) : opt.imageUrl ? (
+                                        <img src={opt.imageUrl} alt="" className="h-full w-full object-cover" />
+                                    ) : opt.icon ? (
+                                        <span className="text-xl leading-none">{opt.icon}</span>
+                                    ) : (
+                                        String(i + 1).padStart(2, '0')
+                                    )}
+                                    <span className="absolute inset-0 hidden items-center justify-center bg-black/40 group-hover:flex">
+                                        <ImagePlus className="h-4 w-4 text-white" />
+                                    </span>
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => patchOption(i, { image: e.target.files?.[0] ?? null })} />
+                                </label>
+                                <input
+                                    value={opt.label}
+                                    onChange={(e) => patchOption(i, { label: e.target.value })}
+                                    placeholder={`Option ${i + 1}`}
+                                    className="min-w-0 flex-1 rounded-xl border-[3px] border-[#1b1b1b] px-4 py-2.5 font-bold focus:border-[#e4006c] focus:outline-none"
+                                />
+                               
+                                {!lockOptionStructure && data.options.length > 2 && (
+                                    <button type="button" onClick={() => removeOption(i)} className="shrink-0 cursor-pointer rounded-lg border-[2px] border-[#1b1b1b] bg-red-100 p-2 text-red-700 transition-colors hover:bg-red-200" title="Remove option">
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
                                 )}
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => patchOption(i, { image: e.target.files?.[0] ?? null })} />
-                            </label>
-                            <input
-                                value={opt.label}
-                                onChange={(e) => patchOption(i, { label: e.target.value })}
-                                placeholder={`Option ${i + 1}`}
-                                className="w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 py-2.5 font-bold focus:border-[#e4006c] focus:outline-none"
-                            />
-                            <input
-                                value={opt.icon}
-                                onChange={(e) => patchOption(i, { icon: e.target.value })}
-                                placeholder="😀"
-                                maxLength={4}
-                                className="w-14 shrink-0 rounded-xl border-[3px] border-[#1b1b1b] px-2 py-2.5 text-center font-bold focus:border-[#e4006c] focus:outline-none"
-                                title="Optional emoji/icon (used if no image)"
-                            />
-                            {!lockOptionStructure && data.options.length > 2 && (
-                                <button type="button" onClick={() => removeOption(i)} className="shrink-0 cursor-pointer rounded-lg border-[2px] border-[#1b1b1b] bg-red-100 p-2 text-red-700 transition-colors hover:bg-red-200">
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
-                            )}
+                            </div>
+                            {imageError && <p className="pl-14 font-mono text-xs font-bold text-[#e4006c]">{imageError}</p>}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 {errors.options && <p className="mt-1 font-mono text-xs font-bold text-[#e4006c]">{errors.options}</p>}
                 {!lockOptionStructure && data.options.length < 10 && (

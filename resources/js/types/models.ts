@@ -16,7 +16,7 @@ export interface PollOption {
 }
 
 export interface Poll {
-    id: number;
+    id: string; // public UUID (D15) — used in URLs and broadcast channel names
     title: string;
     description: string | null;
     allowMultiple: boolean;
@@ -35,6 +35,7 @@ export interface Poll {
 
 export interface VoterEntry {
     id: number;
+    voterKey?: string; // identity for admin vote moderation (D18); voters aren't user accounts
     name: string;
     avatarText: string;
     avatarBgColor: string;
@@ -45,6 +46,8 @@ export interface VoterEntry {
 export interface PollMetrics {
     totalVoters: number;
     velocityPerMinute: number;
+    totalVisits: number;
+    uniqueVisitors: number;
     engagementRate: number;
 }
 
@@ -56,12 +59,12 @@ export interface TallyEntry {
 }
 
 export interface VoteCastPayload {
-    pollId: number;
+    pollId: string;
     tally: TallyEntry[];
 }
 
 export interface VoterTickedPayload {
-    pollId: number;
+    pollId: string;
     voter: {
         name: string;
         avatarText: string;
@@ -72,7 +75,7 @@ export interface VoterTickedPayload {
 }
 
 export interface PollStatusPayload {
-    pollId: number;
+    pollId: string;
     status: PollStatus;
     endsAt: string | null;
     remainingSeconds: number;

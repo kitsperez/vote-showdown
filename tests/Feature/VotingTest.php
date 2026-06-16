@@ -4,6 +4,7 @@ use App\Models\Poll;
 use App\Models\PollOption;
 use App\Models\User;
 use App\Services\VoteService;
+use App\Support\VoterIdentity;
 use Illuminate\Validation\ValidationException;
 
 function activePollWithOptions(): Poll
@@ -19,7 +20,7 @@ function activePollWithOptions(): Poll
 
 it('records a vote and increments the tally', function () {
     $poll = activePollWithOptions();
-    $voter = User::factory()->invitee()->create();
+    $voter = User::factory()->creator()->create();
     $option = $poll->options->first();
 
     $this->actingAs($voter)
@@ -33,7 +34,7 @@ it('records a vote and increments the tally', function () {
 
 it('rejects a second vote on a single-choice poll', function () {
     $poll = activePollWithOptions();
-    $voter = User::factory()->invitee()->create();
+    $voter = User::factory()->creator()->create();
 
     $this->actingAs($voter)->post(route('polls.votes.store', $poll), ['poll_option_id' => $poll->options[0]->id]);
 
@@ -46,12 +47,12 @@ it('rejects a second vote on a single-choice poll', function () {
 
 it('the service lock blocks a single-choice double vote even past the policy (R2)', function () {
     $poll = activePollWithOptions();
-    $voter = User::factory()->invitee()->create();
+    $voter = User::factory()->creator()->create();
     $service = app(VoteService::class);
 
-    $service->cast($voter, $poll, $poll->options[0]->id);
+    $service->cast(VoterIdentity::fromUser($voter), $poll, $poll->options[0]->id);
 
-    expect(fn () => $service->cast($voter, $poll, $poll->options[1]->id))
+    expect(fn () => $service->cast(VoterIdentity::fromUser($voter), $poll, $poll->options[1]->id))
         ->toThrow(ValidationException::class);
 
     expect($poll->votes()->where('user_id', $voter->id)->count())->toBe(1);
@@ -60,7 +61,7 @@ it('the service lock blocks a single-choice double vote even past the policy (R2
 it('rejects voting on an ended poll', function () {
     $poll = Poll::factory()->ended()->create();
     $option = PollOption::factory()->for($poll)->create();
-    $voter = User::factory()->invitee()->create();
+    $voter = User::factory()->creator()->create();
 
     $this->actingAs($voter)
         ->post(route('polls.votes.store', $poll), ['poll_option_id' => $option->id])
@@ -70,13 +71,13 @@ it('rejects voting on an ended poll', function () {
 it('allows multiple distinct options but not the same one twice when allow_multiple', function () {
     $poll = activePollWithOptions();
     $poll->update(['allow_multiple' => true]);
-    $voter = User::factory()->invitee()->create();
+    $voter = User::factory()->creator()->create();
     $service = app(VoteService::class);
 
-    $service->cast($voter, $poll, $poll->options[0]->id);
-    $service->cast($voter, $poll, $poll->options[1]->id);
+    $service->cast(VoterIdentity::fromUser($voter), $poll, $poll->options[0]->id);
+    $service->cast(VoterIdentity::fromUser($voter), $poll, $poll->options[1]->id);
     expect($poll->votes()->where('user_id', $voter->id)->count())->toBe(2);
 
-    expect(fn () => $service->cast($voter, $poll, $poll->options[0]->id))
+    expect(fn () => $service->cast(VoterIdentity::fromUser($voter), $poll, $poll->options[0]->id))
         ->toThrow(ValidationException::class);
 });

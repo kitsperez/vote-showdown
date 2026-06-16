@@ -6,7 +6,9 @@ use App\Http\Requests\StorePollRequest;
 use App\Http\Requests\UpdatePollRequest;
 use App\Models\Poll;
 use App\Services\PollService;
+use App\Services\PollVisitService;
 use App\Support\PollPresenter;
+use App\Support\VoterPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -15,7 +17,10 @@ use Inertia\Response;
 
 class PollController extends Controller
 {
-    public function __construct(private readonly PollService $polls) {}
+    public function __construct(
+        private readonly PollService $polls,
+        private readonly PollVisitService $visits,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -53,20 +58,14 @@ class PollController extends Controller
         $this->authorize('view', $poll);
 
         $this->polls->settleIfExpired($poll);
+        $this->visits->record($poll, $request);
 
         $voters = $poll->votes()
             ->with(['user', 'option'])
             ->latest()
             ->limit(20)
             ->get()
-            ->map(fn ($vote) => [
-                'id' => $vote->id,
-                'name' => $vote->user->name,
-                'avatarText' => $vote->user->avatar_text ?? strtoupper(substr($vote->user->name, 0, 2)),
-                'avatarBgColor' => $vote->user->avatar_bg_color ?? 'bg-[#9cf0ff]',
-                'votedOptionLabel' => $vote->option?->label,
-                'votedAt' => $vote->created_at->diffForHumans(),
-            ]);
+            ->map(fn ($vote) => VoterPresenter::present($vote));
 
         return Inertia::render('polls/show', [
             'poll' => PollPresenter::present($poll, $request->user()),
@@ -76,6 +75,7 @@ class PollController extends Controller
             'canClose' => $request->user()->can('close', $poll),
             'canEdit' => $request->user()->can('update', $poll),
             'canDelete' => $request->user()->can('delete', $poll),
+            'canModerateVotes' => $request->user()->can('deleteVotes', $poll),
         ]);
     }
 

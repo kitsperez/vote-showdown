@@ -28,7 +28,8 @@ class PollPresenter
             : false;
 
         return [
-            'id' => $poll->id,
+            // Public identity is the UUID (D15); the integer id is never exposed.
+            'id' => $poll->uuid,
             'title' => $poll->title,
             'description' => $poll->description,
             'allowMultiple' => $poll->allow_multiple,
@@ -47,7 +48,7 @@ class PollPresenter
                 'label' => $option->label,
                 'colorClass' => $option->color_class,
                 'badgeColorClass' => $option->badge_color_class,
-                'imageUrl' => $option->image_path ? Storage::url($option->image_path) : null,
+                'imageUrl' => $option->image_path ? Storage::disk('public')->url($option->image_path) : null,
                 'icon' => $option->icon,
                 'position' => $option->position,
                 'count' => $option->votes_count,

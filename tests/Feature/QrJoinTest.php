@@ -12,7 +12,7 @@ it('redirects a guest from the join route to login', function () {
 
 it('sends an authenticated visitor straight to the vote screen', function () {
     $poll = Poll::factory()->active()->create();
-    $user = User::factory()->invitee()->create();
+    $user = User::factory()->creator()->create();
 
     $this->actingAs($user)
         ->get(route('polls.join', $poll))

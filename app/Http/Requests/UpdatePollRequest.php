@@ -32,7 +32,8 @@ class UpdatePollRequest extends FormRequest
             'options.*.color_class' => ['nullable', 'string', 'max:60'],
             'options.*.badge_color_class' => ['nullable', 'string', 'max:120'],
             'options.*.icon' => ['nullable', 'string', 'max:40'],
-            'options.*.image' => ['nullable', 'image', 'max:2048'],
+            // Uploaded option image (D10/D10a): explicit MIME allowlist (SVG excluded), 8 MB cap.
+            'options.*.image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
         ];
     }
 }

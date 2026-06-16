@@ -20,7 +20,7 @@ class VoteFactory extends Factory
         return [
             'poll_id' => Poll::factory(),
             'poll_option_id' => PollOption::factory(),
-            'user_id' => User::factory()->invitee(),
+            'user_id' => User::factory()->creator(),
         ];
     }
 }
