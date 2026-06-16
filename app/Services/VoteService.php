@@ -5,8 +5,8 @@ namespace App\Services;
 use App\Events\VoteCast;
 use App\Events\VoterTicked;
 use App\Models\Poll;
-use App\Models\User;
 use App\Models\Vote;
+use App\Support\VoterIdentity;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -14,14 +14,18 @@ use Illuminate\Validation\ValidationException;
 class VoteService
 {
     /**
-     * Cast a vote. An atomic per-user-per-poll lock serializes a user's votes within a
-     * poll, closing the single-choice TOCTOU race the unique index cannot catch (risk R2).
+     * Cast a vote for any voter (authed user or guest). An atomic per-voter-per-poll lock
+     * serializes a voter's votes within a poll, closing the single-choice TOCTOU race the
+     * unique index cannot catch (risk R2). Voters are identified by VoterIdentity::key, not
+     * a users row.
      */
-    public function cast(User $user, Poll $poll, int $optionId): Vote
+    public function cast(VoterIdentity $voter, Poll $poll, int $optionId): Vote
     {
-        return Cache::lock("vote:{$poll->id}:{$user->id}", 5)->block(3, function () use ($user, $poll, $optionId) {
-            return DB::transaction(function () use ($user, $poll, $optionId) {
-                $already = $poll->votes()->where('user_id', $user->id);
+        $lockKey = 'vote:'.$poll->id.':'.md5($voter->key);
+
+        return Cache::lock($lockKey, 5)->block(3, function () use ($voter, $poll, $optionId) {
+            return DB::transaction(function () use ($voter, $poll, $optionId) {
+                $already = $poll->votes()->where('voter_key', $voter->key);
 
                 if (! $poll->allow_multiple && $already->exists()) {
                     throw ValidationException::withMessages(['vote' => 'You already voted in this showdown.']);
@@ -33,16 +37,20 @@ class VoteService
 
                 $vote = $poll->votes()->create([
                     'poll_option_id' => $optionId,
-                    'user_id' => $user->id,
+                    'user_id' => $voter->userId,
+                    'voter_key' => $voter->key,
+                    'voter_email' => $voter->email,
+                    'voter_name' => $voter->name,
+                    'voter_token' => $voter->token,
                 ]);
 
                 $poll->load('options');
                 $option = $poll->options->firstWhere('id', $optionId);
 
                 $this->broadcastTally($poll, $this->tally($poll), [
-                    'name' => $user->name,
-                    'avatarText' => $user->avatar_text ?? strtoupper(substr($user->name, 0, 2)),
-                    'avatarBgColor' => $user->avatar_bg_color ?? 'bg-[#9cf0ff]',
+                    'name' => $voter->displayName,
+                    'avatarText' => $voter->avatarText,
+                    'avatarBgColor' => $voter->avatarBgColor,
                     'votedOptionLabel' => $option?->label,
                     'votedAt' => now()->diffForHumans(),
                 ]);
@@ -50,6 +58,26 @@ class VoteService
                 return $vote;
             });
         });
+    }
+
+    /**
+     * Admin moderation (D18): remove all of a voter's votes on a poll, then rebroadcast the
+     * derived tally so live viewers update. Voters are identified by voter_key. Returns the
+     * number of votes removed.
+     */
+    public function deleteForVoterKey(Poll $poll, string $voterKey): int
+    {
+        $deleted = DB::transaction(fn () => $poll->votes()->where('voter_key', $voterKey)->delete());
+
+        if ($deleted > 0) {
+            try {
+                broadcast(new VoteCast($poll->load('options'), $this->tally($poll)));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $deleted;
     }
 
     /**

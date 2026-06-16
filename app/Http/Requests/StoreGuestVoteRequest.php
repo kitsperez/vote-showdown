@@ -20,7 +20,8 @@ class StoreGuestVoteRequest extends FormRequest
         $poll = $this->route('poll');
 
         return [
-            'email' => ['required', 'email', 'max:160'],
+            // Optional: when blank we fall back to a per-device token for uniqueness.
+            'email' => ['nullable', 'email', 'max:160'],
             'name' => ['nullable', 'string', 'max:80'],
             'poll_option_id' => [
                 'required',

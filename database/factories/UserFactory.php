@@ -31,7 +31,7 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
-            'role' => UserRole::Invitee,
+            'role' => UserRole::Creator,
             'avatar_text' => strtoupper(Str::substr($name, 0, 2)),
             'avatar_bg_color' => fake()->randomElement([
                 'bg-[#ffded6]', 'bg-[#ffd9e0]', 'bg-[#9cf0ff]', 'bg-[#ffe170]',
@@ -60,11 +60,6 @@ class UserFactory extends Factory
     public function creator(): static
     {
         return $this->state(fn () => ['role' => UserRole::Creator]);
-    }
-
-    public function invitee(): static
-    {
-        return $this->state(fn () => ['role' => UserRole::Invitee]);
     }
 
     public function demo(): static

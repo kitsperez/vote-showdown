@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import { Activity, Gauge, PlusCircle, Trophy, Users } from 'lucide-react';
+import { Activity, Eye, Gauge, PlusCircle, Trophy, UserCheck, Users } from 'lucide-react';
 import ShowdownLayout from '@/layouts/showdown-layout';
 import type { UserRole } from '@/types';
 import type { Poll, PollMetrics } from '@/types/models';
@@ -55,9 +55,11 @@ export default function Dashboard({ role, activePoll, polls, metrics }: Dashboar
                         <h3 className="text-xl font-black uppercase italic md:text-3xl">{activePoll.title}</h3>
 
                         {metrics && (
-                            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                                 <MetricCard icon={<Users className="h-5 w-5" />} label="Total Voters" value={metrics.totalVoters} color="bg-[#9cf0ff]" />
                                 <MetricCard icon={<Activity className="h-5 w-5" />} label="Votes / min" value={metrics.velocityPerMinute} color="bg-[#ffe170]" />
+                                <MetricCard icon={<Eye className="h-5 w-5" />} label="Total Visits" value={metrics.totalVisits} color="bg-[#9cf0ff]" />
+                                <MetricCard icon={<UserCheck className="h-5 w-5" />} label="Unique Visitors" value={metrics.uniqueVisitors} color="bg-[#ffe170]" />
                                 <MetricCard icon={<Gauge className="h-5 w-5" />} label="Engagement" value={`${metrics.engagementRate}%`} color="bg-[#ffd9e0]" />
                             </div>
                         )}

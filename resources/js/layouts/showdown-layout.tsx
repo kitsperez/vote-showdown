@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { Compass, KeyRound, LogOut, PlusCircle, Trophy, UserCog } from 'lucide-react';
+import { Compass, KeyRound, LogOut, PlusCircle, Trophy, UserCog, Users } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
 import { FlashToast } from '@/components/showdown/flash-toast';
 import type { SharedData } from '@/types';
@@ -36,7 +36,7 @@ export default function ShowdownLayout({ title, subtitle, children }: PropsWithC
                     <div className="mb-6 px-2 text-left">
                         <h1 className="text-2xl font-black tracking-tighter text-[#e4006c] uppercase italic">VOTE! SHOWDOWN</h1>
                         <p className="mt-0.5 font-mono text-xs font-bold tracking-wider text-zinc-500 uppercase">
-                            {user?.role === 'admin' ? 'Showrunner Mode' : user?.role === 'creator' ? 'Creator Studio' : 'Voter Lounge'}
+                            {user?.role === 'admin' ? 'Admin Mode' : 'Creator Studio'}
                         </p>
                     </div>
 
@@ -44,6 +44,7 @@ export default function ShowdownLayout({ title, subtitle, children }: PropsWithC
                         {navItem(route('dashboard'), 'Dashboard', <Compass className="h-5 w-5" />, current === '/dashboard')}
                         {navItem(route('polls.index'), 'Live Polls', <Trophy className="h-5 w-5" />, current.startsWith('/polls') && !current.endsWith('/create'))}
                         {canCreate && navItem(route('polls.create'), 'Create Poll', <PlusCircle className="h-5 w-5" />, current.endsWith('/create'))}
+                        {user?.role === 'admin' && navItem(route('admin.users.index'), 'Users', <Users className="h-5 w-5" />, current.startsWith('/admin/users'))}
                     </nav>
 
                     <div className="mt-auto rounded-xl border-[3px] border-[#1b1b1b] bg-[#ffe170] p-4 text-left shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">

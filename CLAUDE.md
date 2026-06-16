@@ -37,10 +37,11 @@ The active app is a Laravel/Inertia production scaffold with persistent poll dat
 ## Current Feature State
 
 - Poll CRUD, edit, delete, launch, close, restart, countdown/deadline endings, optional access password, and option image/icon fields exist.
-- Authenticated voting and public no-login guest voting exist; public guest voting creates claimable `is_guest` invitee accounts by email.
+- Authenticated voting and public no-login guest voting exist. Voters are **not** user accounts (D19): each vote carries a canonical `voter_key` (`user:{id}` / `email:{email}` / `token:{token}`) and dedupe is on that key. Roles are Admin and Poll Creator only (D20).
 - QR/share links target public voting/results surfaces.
 - Real-time broadcasts use Reverb/Echo with tally, ticker, and status events. Public pages also listen on public poll channels.
 - Dashboard metrics exist but engagement-rate denominator remains an open product decision.
+- **Planned next feature set (scoped in docs, not yet built):** UUID public poll URLs (D15, `polls.uuid` route key — int PK/FKs stay internal), admin-only User Management (D16), per-poll visit statistics (D17, `poll_visits` + `visits_count`, backend/admin only), admin vote moderation (D18, delete a voter's votes with confirmation), and option-image hardening (D10a — MIME allowlist, larger cap, surfaced errors, `storage:link`). See [`docs/09-execution-checklist.md`](docs/09-execution-checklist.md) Phases 5f–5i and decisions D15–D18.
 - Remaining known work is tracked in [`docs/09-execution-checklist.md`](docs/09-execution-checklist.md), especially magic-link flow, voter audit/settings surfaces, live Reverb/load verification, CI, and deploy hardening.
 
 ## Conventions

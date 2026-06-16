@@ -24,6 +24,13 @@ The project has moved beyond the original prototype migration plan. Laravel/Iner
 | D12 | Guest page parity with authenticated poll view | Implemented |
 | D13 | Any authenticated user can create polls | Implemented |
 | D14 | Light-only brutalist theme polish | Implemented |
+| D15 | Public poll URLs use a non-sequential `polls.uuid` route key; integer PK/FKs stay internal | Planned |
+| D16 | Admin-only User Management (CRUD users + role assignment) under `role:admin` | Planned |
+| D17 | Per-poll visitor access statistics (`poll_visits` table + `polls.visits_count`), backend/admin only | Planned |
+| D18 | Admins may delete a specific voter's votes on a poll (with UI confirmation); tallies recompute and rebroadcast | Planned |
+| D10a | Option image hardening: explicit MIME allowlist, larger size cap, surfaced per-option errors, `storage:link` verified | Implemented |
+| D19 | Guest voters are no longer user accounts. Each vote carries a canonical `voter_key` (`user:{id}` / `email:{email}` / `token:{token}`); dedupe unique index moved onto it. Email-or-device-token fallback; existing `is_guest` accounts migrated onto votes then purged. **Supersedes D8's claimable-account model.** | Implemented |
+| D20 | Role display labels are plain: Admin / Poll Creator / Voter (was "Showrunner" for admin) | Implemented |
 
 ## Remaining Epics
 
@@ -33,6 +40,11 @@ The project has moved beyond the original prototype migration plan. Laravel/Iner
 | Product decisions | Resolve magic-link model, QR target, signup role, engagement formula | Pending |
 | Admin completion | Voter audit/log and product settings decision | Pending |
 | Media verification | Confirm option image upload/render flow end to end | Pending |
+| UUID poll URLs (D15) | Add `polls.uuid` route key, rebind routes/channels, update presenter/types/QR | Planned |
+| User management (D16) | Admin-only user CRUD + role assignment, with last-admin/self safeguards | Planned |
+| Visit statistics (D17) | `poll_visits` recording, dedupe, denormalized counter, admin stats surfacing | Planned |
+| Vote moderation (D18) | Admin delete of a voter's votes with confirmation modal + tally rebroadcast | Planned |
+| Image hardening (D10a) | MIME allowlist, size cap, surfaced errors, `storage:link` | Planned |
 | Quality gates | Pest/build/lint/format/drift tests in CI | Pending |
 | Accessibility | Keyboard, focus, labels, contrast, mobile checks | Pending |
 | Deployment | Forge/VPS, Redis, Supervisor, Reverb, scheduler, TLS, smoke/rollback | Pending |
@@ -71,6 +83,10 @@ A ticket is done only if:
 | R8 | Expired polls remain active | Medium | `settleIfExpired` plus scheduler |
 | R9 | Option media storage mismatch | Medium | Verify `storage:link`, public disk URLs, rendering |
 | R10 | Auth role policy ambiguity | Medium | Close signup/elevation decision before role changes |
+| R11 | UUID migration breaks existing links/FKs/channels | High | Add uuid as a separate route key (keep int PK/FKs), backfill rows, update channel/presenter/types together (D15) |
+| R12 | Admin user management enables privilege escalation / lockout | High | `role:admin` gate + UserPolicy, validate role against enum, block self-demotion and last-admin removal (D16) |
+| R13 | Visit recording inflates rows / leaks PII | Medium | Dedupe one-per-session-per-poll, hash IP, no raw PII stored (D17) |
+| R14 | Vote deletion corrupts tallies or is misauthorized | Medium | Admin-only policy, derived tallies recompute, rebroadcast after delete (D18) |
 
 ## Release Gates
 

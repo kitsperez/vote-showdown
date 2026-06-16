@@ -14,6 +14,7 @@
 - [~] Realtime is implemented in code but still needs live multi-browser/Reverb/load verification.
 - [ ] Magic-link / one-tap invitee voting remains pending; current low-friction voter path is public guest voting by email.
 - [ ] CI, Forge/VPS deployment, Redis production hardening, accessibility pass, and final release smoke tests remain pending.
+- [ ] New feature set scoped (not yet built): UUID poll URLs (5f), admin user management (5g), poll visit statistics (5h), admin vote moderation (5i), and image-upload hardening (Phase 5c). See decisions D15–D18 / D10a.
 
 ## Phase -1 - Repo Cleanup
 
@@ -122,6 +123,51 @@
 - [x] Expose password state through `PollPresenter`.
 - [x] Add option image/icon schema, validation, service storage, and presenter fields.
 - [ ] Verify option images render correctly across dashboard, show, public vote, and public results pages.
+
+### Image upload hardening (D10a)
+
+- [ ] Run/verify `php artisan storage:link` and confirm `Storage::url` renders saved images (current break: missing symlink + 2 MB cap silently rejecting normal photos).
+- [ ] Raise option image cap from `max:2048` to `max:8192` in `StorePollRequest`/`UpdatePollRequest`.
+- [ ] Add explicit `mimes:jpg,jpeg,png,webp` allowlist (exclude SVG) replacing the bare `image` rule.
+- [ ] Store uploads via `storeAs` with a random filename (no enumeration).
+- [ ] Surface per-option image validation errors (`errors['options.N.image']`) in `PollForm`.
+- [ ] Confirm PHP `upload_max_filesize` / `post_max_size` are large enough for the new cap.
+
+## Phase 5f - UUID Public Poll URLs (D15)
+
+- [ ] Add `polls.uuid` (unique, indexed) migration + backfill of existing rows.
+- [ ] Auto-generate `uuid` on poll creation (model boot hook); set `getRouteKeyName() => 'uuid'`.
+- [ ] Confirm route-model binding resolves `/p/{poll}`, `/r/{poll}`, `/polls/{poll}`, join/unlock/control by uuid.
+- [ ] Switch broadcast channel naming to `poll.{uuid}` in `routes/channels.php` and the Echo hooks.
+- [ ] Expose `uuid` as the poll's public id in `PollPresenter`; update `resources/js/types/models.ts` (`id: number → string`).
+- [ ] Update factories/seeders to generate uuids; verify QR/share links emit uuid URLs.
+- [ ] Pest: poll resolves by uuid, sequential int id is never exposed in props/URLs.
+
+## Phase 5g - Admin User Management (D16)
+
+- [ ] Add resourceful `admin/users` routes (index/create/store/edit/update/destroy) under `role:admin`.
+- [ ] Add `Admin\UserController` (thin), `StoreUserRequest`/`UpdateUserRequest` (role validated against `UserRole`, unique email, password rules).
+- [ ] Add `UserPolicy` (admin-only) and register it.
+- [ ] Safeguards: block self-demotion, block deleting yourself, block removing the last admin.
+- [ ] Set privilege fields (`role`) only through this audited path (addresses mass-assignment audit finding).
+- [ ] Add `pages/admin/users/{index,create,edit}.tsx` in brutalist style; show sidebar link to admins only.
+- [ ] Pest: non-admins get 403; admin can CRUD; last-admin/self-demotion guards hold.
+
+## Phase 5h - Poll Visit Statistics (D17)
+
+- [ ] Add `poll_visits` migration and `polls.visits_count` column.
+- [ ] Add `PollVisit` model and `PollVisitService::record(poll, request)` with one-per-session-per-poll dedupe and salted IP hash.
+- [ ] Record visits on authed `show`, public `show`, and public `results`.
+- [ ] Surface visit stats (total, unique, visit→vote conversion) in admin dashboard/poll list — backend only, no public UI.
+- [ ] Pest: a visit is recorded once per session; counter increments; no raw IP stored.
+
+## Phase 5i - Admin Vote Moderation (D18)
+
+- [ ] Add `DELETE polls/{poll}/voters/{user}/votes` route (auth + admin).
+- [ ] Add `PollPolicy::deleteVotes` (admin-only) and `VoteService::deleteForVoter(poll, user)`.
+- [ ] Add `VoteController::destroyForVoter` (thin); recompute-derived tallies and rebroadcast tally/status after delete.
+- [ ] Add admin-only delete control + confirmation modal to the `polls/show` voter list; flash toast on success.
+- [ ] Pest: non-admin 403; admin delete removes the voter's votes and tally reflects the change.
 
 ## Phase 5d - Roles and Guest Parity
 

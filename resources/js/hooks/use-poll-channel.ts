@@ -16,7 +16,7 @@ interface PollChannelHandlers {
  *
  * Handlers are held in a ref so changing them doesn't re-subscribe the socket.
  */
-export function usePollChannel(pollId: number, handlers: PollChannelHandlers): void {
+export function usePollChannel(pollId: string, handlers: PollChannelHandlers): void {
     const ref = useRef(handlers);
     ref.current = handlers;
 

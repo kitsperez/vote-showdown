@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CountdownBadge } from '@/components/showdown/countdown-badge';
+import { OptionBadge } from '@/components/showdown/option-badge';
 import { QrShare } from '@/components/showdown/qr-share';
 import { useCountdown } from '@/hooks/use-countdown';
 import { usePublicPollChannel } from '@/hooks/use-public-poll-channel';
@@ -68,10 +69,11 @@ export default function PublicResults({ poll, voters: initialVoters }: ResultsPr
         },
     });
 
-    // Polling backstop for counts if Reverb is unreachable (no +1, just correctness).
+    // Polling backstop for counts AND the voters feed if Reverb is unreachable
+    // (no +1 animation, just correctness — keeps the voter list in sync too).
     useEffect(() => {
         if (!isActive) return;
-        const id = setInterval(() => router.reload({ only: ['poll'] }), 6000);
+        const id = setInterval(() => router.reload({ only: ['poll', 'voters'] }), 6000);
         return () => clearInterval(id);
     }, [isActive]);
 
@@ -119,8 +121,11 @@ export default function PublicResults({ poll, voters: initialVoters }: ResultsPr
                                     const m = meta(t.poll_option_id);
                                     return (
                                         <div key={t.poll_option_id}>
-                                            <div className="mb-2 flex justify-between font-mono text-xs font-bold uppercase">
-                                                <span>{t.label}</span>
+                                            <div className="mb-2 flex items-center justify-between font-mono text-xs font-bold uppercase">
+                                                <span className="flex items-center gap-2">
+                                                    {m && <OptionBadge option={m} size="sm" />}
+                                                    {t.label}
+                                                </span>
                                                 <span className="relative">
                                                     {bumps
                                                         .filter((b) => b.label === t.label)

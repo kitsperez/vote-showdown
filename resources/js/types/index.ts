@@ -29,7 +29,7 @@ export interface SharedData {
     [key: string]: unknown;
 }
 
-export type UserRole = 'admin' | 'creator' | 'invitee';
+export type UserRole = 'admin' | 'creator';
 
 export interface User {
     id: number;

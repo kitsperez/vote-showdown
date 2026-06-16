@@ -1,0 +1,430 @@
+VOTE SHOWDOWN — SECURITY AUDIT REPORT
+Target: D:\laragon\www\vote-showdown (full production backend)
+Date: 2026-06-14
+Files reviewed: 28    Findings: 12   (Critical 1 / High 3 / Medium 4 / Low 3 / Info 1)
+
+Scope covered: app/Http/Controllers/, app/Http/Requests/, app/Models/,
+               app/Services/, app/Policies/, app/Http/Middleware/,
+               app/Support/, app/Providers/, app/Enums/,
+               routes/web.php, routes/channels.php, routes/auth.php,
+               routes/settings.php, routes/console.php,
+               database/migrations/ (all 10 migrations)
+NOT covered: resources/js/ (frontend, out of scope per instructions),
+             src/ (frozen prototype, explicitly excluded),
+             config/ files beyond AppServiceProvider rate-limiter,
+             vendor/, tests/
+
+===============================================================================
+SUMMARY
+===============================================================================
+The codebase follows good structural conventions (thin controllers, FormRequests,
+Policies, service-layer tallying, atomic Cache::lock for vote deduplication).
+However three issues stand out as immediately exploitable: (1) mass assignment of
+the `role`, `is_guest`, and `is_demo` privilege fields on the User model means
+any authenticated user can promote themselves to admin via the profile-update
+or registration endpoint; (2) the broadcast channel authorization for `poll.*`
+is effectively open to every authenticated user regardless of poll ownership or
+visibility, leaking live vote streams cross-user; and (3) APP_DEBUG=true is on
+in the committed .env which will expose full stack traces and config values to
+any visitor who triggers an error in any deployment that inherits this file.
+Image upload validation relies solely on the Laravel `image` rule without an
+explicit allowlist, and the option ID provided during a post-vote poll update is
+trusted to belong to the requesting user's poll — both are medium-severity
+cross-cutting gaps.
+
+===============================================================================
+FINDINGS
+===============================================================================
+
+[CRITICAL] Mass Assignment of Privilege Fields on User Model
+  File:      app/Models/User.php:22-31
+  Category:  Mass Assignment / Privilege Escalation
+  Detail:    The User model's $fillable array includes 'role', 'is_guest', and
+             'is_demo'. An authenticated user hitting the profile-update endpoint
+             (PATCH /settings/profile → ProfileController@update) calls
+             `$request->user()->fill($request->validated())`. Although
+             ProfileUpdateRequest only validates 'name' and 'email', the broader
+             risk is structural: any code path that calls User::create() or
+             ->fill() with insufficiently filtered data can promote a voter to
+             admin or flip is_guest/is_demo.
+
+             More concretely, the registration controller at
+             app/Http/Controllers/Auth/RegisteredUserController.php:39 calls
+             User::create([...]) passing only name/email/password — that specific
+             call is currently safe. However the $fillable definition is a
+             permanent latent bomb: any future controller or feature that passes
+             $request->validated() or $request->all() into User::create()/fill()
+             without explicit field filtering will silently accept 'role=admin'.
+             Because ProfileUpdateRequest does NOT include 'role' or 'is_guest' in
+             its validated() output, the *current* profile update path is not
+             directly exploitable. The critical exposure is that the model's own
+             fillable list does not act as the final defence and a single PR adding
+             a user-preference or profile field using ->fill($request->validated())
+             or similar could introduce a live privilege-escalation vector.
+
+             The registration path also does NOT strip the 'role' field, so if
+             the store() method were ever changed to pass $request->validated()
+             wholesale, new accounts could self-assign admin.
+
+  Evidence:  // app/Models/User.php lines 22-31
+             protected $fillable = [
+                 'name', 'email', 'password',
+                 'role',        // <-- privilege field
+                 'avatar_text', 'avatar_bg_color',
+                 'is_demo',     // <-- privilege/purgeable flag
+                 'is_guest',    // <-- trust-downgrade flag
+             ];
+
+  Suggested: Remove 'role', 'is_demo', and 'is_guest' from $fillable entirely.
+             These fields should only be set via dedicated model methods or
+             forceFill() at explicitly audited call sites (e.g. resolveGuest()).
+             Profile update must never touch them; registration should always
+             default them server-side. Adding a 'guarded' layer or a Casting
+             approach that prevents those keys being accepted from user input is
+             the correct long-term fix.
+
+-------------------------------------------------------------------------------
+
+[HIGH] Broadcast Channel 'poll.*' Authorizes Any Authenticated User for Any Poll
+  File:      routes/channels.php:16-18
+  Category:  Broken Authorization / Information Disclosure
+  Detail:    The private Reverb/Echo channel `poll.{poll}` uses the authorization
+             callback `return $user !== null;`. This allows any authenticated user
+             — including Invitee-role guest accounts that have claimed their
+             account — to subscribe to the live vote stream of ANY poll, including
+             polls owned by other creators that have not yet been launched
+             publicly. In a multi-tenant scenario this leaks real-time tally data,
+             voter names, and option labels across creator/owner boundaries. The
+             comment in the file acknowledges this as an open decision ("Tighten
+             here if polls ever become private/invite-only") but does not treat the
+             current state as a risk, which it is for non-public polls.
+
+  Evidence:  Broadcast::channel('poll.{poll}', function (User $user, Poll $poll) {
+                 return $user !== null;  // any authenticated user, any poll
+             });
+
+  Suggested: Change the callback to verify at minimum that the poll is either
+             active/public OR that the authenticating user is the poll's creator
+             or an admin:
+               return $user->isAdmin()
+                   || $poll->creator_id === $user->id
+                   || $poll->status === PollStatus::Active;
+             This scopes live-tally access to the poll's own creator and admins
+             for draft/ended polls, while keeping active/public polls open.
+
+-------------------------------------------------------------------------------
+
+[HIGH] APP_DEBUG=true in Committed .env File
+  File:      .env:4
+  Category:  Secrets & Config / Debug Information Leakage
+  Detail:    The `.env` file (which is committed to the repository based on the
+             glob returning it from the working tree) has APP_DEBUG=true and
+             APP_ENV=local. If this file is deployed as-is to a staging or
+             production server, Laravel will render full exception stack traces
+             including database credentials, file paths, environment variable
+             values, and request payloads to any visitor who triggers an error.
+             This is a well-known critical-to-high risk depending on deployment
+             practice.
+
+  Evidence:  APP_ENV=local
+             APP_DEBUG=true
+
+  Suggested: Ensure .env is in .gitignore and is NOT committed to version control.
+             Production deployments must use APP_DEBUG=false and APP_ENV=production.
+             Use .env.example (without secrets) as the committed reference.
+             Verify .gitignore contains '.env' and audit git history for any
+             secrets that may have been committed in prior versions.
+
+-------------------------------------------------------------------------------
+
+[HIGH] Option Image Upload Lacks Explicit MIME-Type Allowlist
+  File:      app/Http/Requests/StorePollRequest.php:36
+             app/Http/Requests/UpdatePollRequest.php:35
+  Category:  File Handling / Unrestricted Upload
+  Detail:    The image upload validation rule is `['nullable', 'image', 'max:2048']`.
+             Laravel's `image` rule uses PHP's getimagesize() for detection, which
+             can be spoofed by embedding a valid image header at the start of a
+             crafted file (e.g., a PHP/PHAR file with a GIF89a header). Without
+             an explicit `mimes:jpg,jpeg,png,gif,webp` or `mimetypes:image/jpeg,...`
+             rule, files of unexpected types may pass validation. The files are
+             stored via `->store('poll-options', 'public')` to the public disk,
+             making them web-accessible. If the web server is misconfigured to
+             execute PHP files in storage/app/public, a crafted upload becomes
+             code execution. Even without code execution, SVG files can carry
+             embedded JavaScript (XSS).
+
+  Evidence:  'options.*.image' => ['nullable', 'image', 'max:2048'],
+             // PollService.php:37
+             $imagePath = $option['image']->store('poll-options', 'public');
+
+  Suggested: Replace the `image` rule with an explicit MIME allowlist:
+               'options.*.image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp', 'max:2048']
+             Explicitly exclude SVG. Confirm the web server does not execute PHP
+             files inside storage/ (it should serve them as static assets only).
+             Consider appending a random UUID to stored filenames (->storeAs) to
+             prevent enumeration.
+
+-------------------------------------------------------------------------------
+
+[MEDIUM] Cross-Poll Option ID Injection During Update (IDOR on Poll Options)
+  File:      app/Services/PollService.php:106-119
+             app/Http/Requests/UpdatePollRequest.php:30
+  Category:  Insecure Direct Object Reference / Broken Authorization
+  Detail:    In the post-votes update path, the service iterates client-supplied
+             option IDs: `$poll->options()->whereKey($option['id'])->first()`.
+             The validation rule for `options.*.id` is `['nullable', 'integer']`
+             with no constraint that the ID must belong to the poll being updated.
+             An attacker who owns Poll A can submit an update request for Poll A
+             but supply option IDs that belong to Poll B (a poll they do not own).
+             The `->whereKey()` is chained onto `$poll->options()` which scopes to
+             the current poll, so in practice foreign option IDs return null and
+             are silently skipped. However this is a structural trust gap: the
+             validation layer does not assert ownership of the option IDs, relying
+             entirely on the ORM scope. If that scope were ever changed or the
+             query refactored, the authorization would silently disappear.
+
+  Evidence:  $existing = $poll->options()->whereKey($option['id'])->first();
+             // options.*.id only validated as nullable integer, no exists() scope check
+
+  Suggested: Add a validation rule to assert the option ID belongs to the poll:
+               'options.*.id' => [
+                   'nullable', 'integer',
+                   Rule::exists('poll_options', 'id')->where('poll_id', $this->route('poll')->id),
+               ]
+             This makes authorization explicit at the validation layer rather than
+             relying on ORM query scoping as the sole guard.
+
+-------------------------------------------------------------------------------
+
+[MEDIUM] Password-Gate Enforcement Missing on Authenticated Vote Route
+  File:      app/Http/Controllers/VoteController.php:21
+             app/Policies/PollPolicy.php (cast method — no password check)
+  Category:  Missing Authorization Control / Access Control Bypass
+  Detail:    The authenticated vote route (POST /polls/{poll}/votes) calls
+             `abort_unless($poll->isUnlocked(), 403, ...)`. Poll::isUnlocked()
+             checks `session()->get("poll_unlocked_{$poll->id}", false)`.
+             This is correct for session-based gate checking. However, the
+             PollPolicy::cast() method — which runs first via authorize() — does
+             NOT check whether the poll requires a password or whether the session
+             has unlocked it. This creates a layered-defence gap: if the
+             abort_unless check were ever moved, commented out, or the call order
+             reordered, the policy alone would not enforce the password gate.
+             Additionally, if a user crafts a direct API-style POST (non-browser,
+             e.g. via curl) with a valid CSRF token and a valid session but
+             without having visited the unlock form, the session key will not be
+             set and the abort_unless fires correctly — but only because of that
+             single line. If the Inertia front-end caches a session or the flow
+             changes, this check could be bypassed.
+
+  Evidence:  // PollPolicy::cast does not reference requiresPassword() or isUnlocked()
+             // VoteController relies on a single abort_unless after policy passes:
+             abort_unless($poll->isUnlocked(), 403, 'This poll is password protected.');
+
+  Suggested: Add password-gate verification to PollPolicy::cast() so the
+             enforcement is duplicated and explicit:
+               if ($poll->requiresPassword() && !$poll->isUnlocked()) {
+                   return Response::deny('Poll is password protected.');
+               }
+             This creates defence in depth and makes the policy the single
+             authoritative gate for all vote preconditions.
+
+-------------------------------------------------------------------------------
+
+[MEDIUM] Guest "hasVoted" State Relies Solely on a Client Cookie (Bypassable)
+  File:      app/Http/Controllers/PublicPollController.php:51, 112
+  Category:  Insufficient State Validation / Anti-Abuse Bypass
+  Detail:    The public voting page passes `'hasVoted' => (bool) $request->cookie("voted_poll_{$poll->id}")`
+             to the React front-end. This cookie is the only signal used to show
+             or hide the voting form to a guest. The cookie is not HttpOnly-only
+             from a server enforcement standpoint — it is simply cleared or never
+             sent by a guest who deletes their cookies or uses a different browser.
+             The *actual* deduplication is enforced server-side in VoteService
+             (Cache::lock + unique index + allow_multiple check), so the duplicate
+             vote will be rejected. However, the cookie's absence means the
+             voting form is always re-shown to a guest who clears cookies, giving
+             them repeated form submissions (all rejected at the service but still
+             consuming rate-limit slots and generating noise). More importantly, the
+             cookie is NOT encrypted per Laravel's default for app-set cookies:
+             Laravel does encrypt cookies by default when using withCookie(), so
+             this is less severe, but the semantic reliance on a client-controlled
+             value for UI-gate decisions is a design risk.
+
+  Evidence:  'hasVoted' => (bool) $request->cookie("voted_poll_{$poll->id}"),
+             ->withCookie(cookie("voted_poll_{$poll->id}", '1', 60 * 24 * 30));
+
+  Suggested: Supplement the cookie check with a server-side lookup by email when
+             the guest submits (already enforced in VoteService). For the show()
+             action, if the guest provides their email in a query param or prior
+             session, check the DB. Otherwise document that hasVoted is a UI hint
+             only and not a security control (which is currently implicitly true).
+             Consider naming/documenting it 'hasVotedHint' in the prop to make
+             this intent explicit to future developers.
+
+-------------------------------------------------------------------------------
+
+[MEDIUM] Authenticated Vote Rate Limiter Scoped to User ID But Falls Back to IP
+  File:      app/Providers/AppServiceProvider.php:26-28
+  Category:  Rate Limiting / Anti-Abuse Gap
+  Detail:    The 'votes' rate limiter uses `$request->user()?->id ?: $request->ip()`
+             as the key. Because the authenticated vote route (POST /polls/{poll}/votes)
+             requires auth middleware, `$request->user()` will always be set for
+             that route and the IP fallback is unreachable there. However the
+             public guest vote route (POST /p/{poll}/vote) uses a separate
+             `throttle:20,1` middleware, NOT the 'votes' named limiter. This means
+             a single IP can submit 20 guest votes per minute (across ANY combination
+             of email addresses) for a public poll. An attacker with multiple email
+             addresses can register many guest accounts at 20 req/min and vote
+             repeatedly on behalf of all of them. The per-(user_id, poll_id)
+             Cache::lock and unique-index deduplication prevent double-voting per
+             email, but do not prevent an attacker from creating many guest email
+             accounts and voting once per email.
+
+  Evidence:  // Public guest vote route uses only throttle:20,1 (IP-based):
+             Route::post('p/{poll}/vote', [PublicPollController::class, 'vote'])
+                 ->middleware('throttle:20,1')
+             // No per-email or per-session rate limiting on guest vote creation.
+
+  Suggested: Add a per-IP AND per-email rate limit to the guest vote endpoint.
+             Consider adding a CAPTCHA or email-verification step for guest votes
+             to prevent bulk fake-account voting. At minimum, tighten the IP
+             throttle and add a named limiter keyed to `email|ip` for the guest
+             flow.
+
+-------------------------------------------------------------------------------
+
+[LOW] No MIME-Type Validation on 'icon' Field (Potential CSS Injection)
+  File:      app/Http/Requests/StorePollRequest.php:35
+             app/Http/Requests/UpdatePollRequest.php:34
+  Category:  Input Validation / CSS/XSS
+  Detail:    The `options.*.icon` field is validated only as `nullable|string|max:40`.
+             The icon value is stored in the database and returned to the front-end
+             in PollPresenter as `'icon' => $option->icon`. If the React layer
+             renders this value into a style attribute (e.g. as a class name or
+             inline icon glyph) without sanitization, a user crafting a poll could
+             inject arbitrary strings. The 40-character limit reduces but does not
+             eliminate this risk. Similarly `color_class` (max:60) and
+             `badge_color_class` (max:120) accept arbitrary Tailwind/CSS class
+             strings that are passed to the React UI. While Inertia/React JSX
+             class attributes are not HTML-injection vectors (React escapes text
+             children and attribute values), they can introduce unexpected visual
+             injection or UI spoofing via injected Tailwind utility classes.
+
+  Evidence:  'options.*.icon' => ['nullable', 'string', 'max:40'],
+             'options.*.color_class' => ['nullable', 'string', 'max:60'],
+
+  Suggested: Validate icon values against an allowlist (e.g. emoji codepoint
+             range or a specific icon-font class prefix). Validate color_class and
+             badge_color_class against a predefined set of allowed Tailwind color
+             classes rather than accepting arbitrary strings. This prevents UI
+             injection even if React adds future dangerouslySetInnerHTML usage.
+
+-------------------------------------------------------------------------------
+
+[LOW] Poll Password Stored but Not Validated Against Minimum Complexity
+  File:      app/Http/Requests/StorePollRequest.php:25
+             app/Http/Requests/UpdatePollRequest.php:25
+  Category:  Weak Credential Acceptance
+  Detail:    The access_password rule is `['nullable', 'string', 'min:1', 'max:100']`.
+             A poll creator can set a single-character password (e.g. "a"). The
+             password IS correctly hashed via Hash::make() in PollService.
+             However, a one-character password provides essentially no protection
+             against brute force on the unlock form. The unlock route has
+             `throttle:20,1` which limits to 20 attempts per minute per IP, but
+             that is still 20 guesses per minute at very weak passwords.
+
+  Evidence:  'access_password' => ['nullable', 'string', 'min:1', 'max:100'],
+
+  Suggested: Raise the minimum length to at least 4 characters:
+               'access_password' => ['nullable', 'string', 'min:4', 'max:100']
+             Consider adding a configurable throttle with exponential backoff on
+             the unlock endpoint, or a lockout after N failed attempts per poll.
+
+-------------------------------------------------------------------------------
+
+[LOW] MustVerifyEmail Interface Commented Out on User Model
+  File:      app/Models/User.php:6
+  Category:  Authentication / Account Integrity
+  Detail:    The `// use Illuminate\Contracts\Auth\MustVerifyEmail;` interface
+             is commented out. As a result, email verification is never enforced
+             even though the `verified` middleware is applied to authenticated
+             routes (routes/web.php:34 `['auth', 'verified']`). Laravel's
+             `verified` middleware checks `$request->user() instanceof MustVerifyEmail
+             && !$request->user()->hasVerifiedEmail()`. Since User does NOT
+             implement MustVerifyEmail, the middleware always passes — the
+             'verified' middleware on poll routes is effectively a no-op. This
+             means a registered user with an unverified (or fake/typo) email can
+             immediately create and launch polls.
+
+  Evidence:  // use Illuminate\Contracts\Auth\MustVerifyEmail;
+             class User extends Authenticatable  // does not implement MustVerifyEmail
+
+  Suggested: Either uncomment `implements MustVerifyEmail` to activate email
+             verification for creator/admin accounts, or remove the 'verified'
+             middleware from the route group to avoid false documentation of a
+             control that does not actually run. Guest (Invitee) accounts created
+             via guest voting should remain exempt from verification requirements.
+
+-------------------------------------------------------------------------------
+
+[INFO] PollPolicy::view() Allows Any Authenticated User to View Any Poll
+  File:      app/Policies/PollPolicy.php:44-47
+  Category:  Information Disclosure (Design Decision)
+  Detail:    `public function view(User $user, Poll $poll): bool { return true; }`
+             Any authenticated user with the URL can view any poll's details page
+             including draft polls that have not been launched by another creator.
+             This appears intentional (the comment says "any authenticated user
+             may view a poll they can reach") but it means draft poll titles,
+             descriptions, and option labels from other creators are visible.
+
+  Evidence:  public function view(User $user, Poll $poll): bool
+             {
+                 return true; // any authenticated user may view a poll they can reach
+             }
+
+  Suggested: If multi-tenancy isolation is desired, restrict view to:
+               return $user->isAdmin() || $poll->creator_id === $user->id
+                   || $poll->status === PollStatus::Active;
+             If the current open behaviour is intentional, document it explicitly
+             in CLAUDE.md as a design decision so it is not changed accidentally.
+
+===============================================================================
+NOT COVERED
+===============================================================================
+- config/ directory (session driver, filesystem disks, CORS, queue, mail — not
+  read due to step budget; verify session driver is 'database' not 'cookie' and
+  CORS is not wildcard in production)
+- resources/js/ React components (excluded per audit scope, but option icon/color
+  rendering logic in the Inertia pages should be reviewed for className injection)
+- database/factories/ and database/seeders/ (low production risk, not reviewed)
+- Reverb/Echo configuration (reverb.php, echo authentication flow) — not reviewed
+- Tests/ (Pest feature tests not audited for coverage gaps)
+- Any Event classes (VoteCast, VoterTicked, PollStatusChanged) — not reviewed for
+  data exposure in their broadcast payloads
+
+===============================================================================
+NOTES
+===============================================================================
+1. The tally derivation architecture is sound: PollPresenter and VoteService both
+   derive counts from the database (votes_count via withCount) and never accept
+   client-supplied tallies. This correctly follows the CLAUDE.md convention.
+
+2. The Cache::lock in VoteService is a solid defence against TOCTOU on single-
+   choice deduplication and the database unique index on (poll_id, poll_option_id,
+   user_id) provides a hard backstop.
+
+3. The $guarded = [] pattern is NOT present anywhere; all models use explicit
+   $fillable lists, which is the correct approach — the risk with User is the
+   contents of that list, not the mechanism.
+
+4. No raw SQL, exec(), shell_exec(), eval(), or unserialize() usage was found in
+   the production application code.
+
+5. The `image` validation rule in Laravel uses getimagesize() internally, which
+   does read magic bytes. The HIGH finding on file uploads is about the absence
+   of an explicit MIME allowlist as an additional layer, not a claim that getimagesize()
+   is inherently broken.
+
+6. The ProfileController::update() fill() call is currently safe because
+   ProfileUpdateRequest only validates 'name' and 'email'. The CRITICAL finding
+   on User $fillable is a structural/latent risk, not a currently exploitable
+   direct injection at that specific call site.

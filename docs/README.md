@@ -35,6 +35,9 @@ Each module file is a vertical slice spanning DB, backend, frontend, and accepta
 | Admin controls | [`modules/admin-controls.md`](modules/admin-controls.md) |
 | QR voting | [`modules/qr-voting.md`](modules/qr-voting.md) |
 | Public sharing & guest voting | [`modules/public-sharing.md`](modules/public-sharing.md) |
+| User management (admin) `[planned]` | [`modules/user-management.md`](modules/user-management.md) |
+| Poll visit statistics `[planned]` | [`modules/poll-visits.md`](modules/poll-visits.md) |
+| Admin vote moderation `[planned]` | [`modules/vote-moderation.md`](modules/vote-moderation.md) |
 
 ## Current Implementation Baseline
 
@@ -45,6 +48,7 @@ Each module file is a vertical slice spanning DB, backend, frontend, and accepta
 - Magic-link / one-tap invitee voting is still a planned enhancement, not the current low-friction path.
 - Dashboard metrics exist but engagement-rate formula is still an open decision.
 - Dedicated voter audit/settings surfaces, live Reverb/load verification, CI, accessibility, and deployment hardening remain pending.
+- Next scoped feature set (planned, not yet built): UUID poll URLs (D15), admin user management (D16), poll visit statistics (D17), admin vote moderation (D18), and option-image hardening (D10a). Specs live in the module table and decisions D15–D18.
 
 ## Locked Decisions
 

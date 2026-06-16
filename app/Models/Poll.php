@@ -7,11 +7,31 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Poll extends Model
 {
     /** @use HasFactory<\Database\Factories\PollFactory> */
     use HasFactory;
+
+    /**
+     * Public poll identity is a non-sequential UUID (D15). The integer primary key and
+     * all foreign keys stay internal; URLs and broadcast channels use the UUID so the
+     * sequential id is never exposed.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Poll $poll) {
+            if (empty($poll->uuid)) {
+                $poll->uuid = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
 
     protected $fillable = [
         'creator_id',
@@ -61,6 +81,11 @@ class Poll extends Model
     public function votes(): HasMany
     {
         return $this->hasMany(Vote::class);
+    }
+
+    public function visits(): HasMany
+    {
+        return $this->hasMany(PollVisit::class);
     }
 
     public function isActive(): bool

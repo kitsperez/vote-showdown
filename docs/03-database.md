@@ -37,10 +37,13 @@ Plus Laravel's standard tables: `password_reset_tokens`, `sessions`, `cache`, `j
 ## Design notes (the decisions that matter)
 
 - **Tallies are derived, not stored as the source of truth.** A poll option's vote count = `COUNT(votes WHERE poll_option_id = ?)`. For the live UI we expose it via `withCount` / a cached counter, but the `votes` rows are canonical. This makes the prototype's `count: number` on each option a *read model*, never a writable field.
-- **Dedupe via a unique index, enforced by the DB.** Single-choice polls: one vote per `(poll_id, user_id)`. Multiple-choice polls: one vote per `(poll_id, poll_option_id, user_id)`. We use the broader unique index `UNIQUE(poll_id, poll_option_id, user_id)` and additionally enforce the single-choice rule in `VoteService` (a partial unique index on `(poll_id,user_id)` isn't portable to MySQL, so the app layer guards it — see [`modules/voting.md`](modules/voting.md)).
+- **Voters are not user accounts (D19).** A vote carries a canonical `voter_key` identifying any voter — `user:{id}` (authenticated), `email:{email}` (guest by email), or `token:{token}` (guest by device, the email fallback). `votes.user_id` is nullable (set only for authenticated voters); guest identity lives in `voter_email` / `voter_name` / `voter_token` on the vote. Public guest voting no longer creates `is_guest` users.
+- **Dedupe via a unique index, enforced by the DB.** One vote per `(poll_id, poll_option_id, voter_key)`; the single-choice rule (one vote per `(poll_id, voter_key)`) is additionally enforced by a per-`voter_key`-per-poll `Cache::lock` in `VoteService` (a partial unique index isn't portable to MySQL, so the app layer guards it — see [`modules/voting.md`](modules/voting.md)).
 - **Timer is server-authoritative.** `polls.ends_at` is the truth; the client only renders the remaining seconds. `duration_seconds` is the configured length used to compute `ends_at` at launch. The prototype's client `timerSeconds` becomes display-only.
 - **Roles live on `users.role`** (enum), not a separate table — three fixed roles, no dynamic permissions needed. See [`06-auth-and-roles.md`](06-auth-and-roles.md).
 - **Cosmetic fields are persisted** (`color_class`, `badge_color_class`, `avatar_text`, `avatar_bg_color`) so the brutalist look from the prototype survives a round-trip. Seeded from `src/data.ts`.
+- **Public poll identity is a UUID, internal identity stays a bigint (D15).** `polls.uuid` (unique, indexed) is the route key (`getRouteKeyName() => 'uuid'`) and the value exposed across the Inertia boundary and broadcast channels (`poll.{uuid}`). The `bigint` `id` and all foreign keys (`poll_options.poll_id`, `votes.poll_id`, `poll_visits.poll_id`) remain integer for performance — only the *public* identifier is the UUID, so sequential ids never leak in URLs/QRs.
+- **Visit statistics are derived from `poll_visits`, backed by a denormalized counter (D17).** Each recorded access is a `poll_visits` row (deduped one-per-session-per-poll, IP stored only as a salted hash — no raw PII). `polls.visits_count` is a denormalized total for cheap reads; unique visitors and visit→vote conversion come from the rows. Backend/admin surfacing only — there is no public visit UI.
 
 ## Migrations `[new]`
 
@@ -55,7 +58,7 @@ Schema::create('users', function (Blueprint $table) {
     $table->string('email')->unique();
     $table->timestamp('email_verified_at')->nullable();
     $table->string('password');
-    $table->enum('role', ['admin', 'creator', 'invitee'])->default('invitee');
+    $table->enum('role', ['admin', 'creator'])->default('creator'); // D19/D20: no "invitee"/Voter role
     $table->string('avatar_text', 4)->nullable();         // e.g. "JD"
     $table->string('avatar_bg_color')->default('bg-[#9cf0ff]');
     $table->boolean('is_demo')->default(false)->index();  // seed/demo voters, purgeable (M1)
@@ -70,6 +73,8 @@ Schema::create('users', function (Blueprint $table) {
 ```php
 Schema::create('polls', function (Blueprint $table) {
     $table->id();
+    $table->uuid('uuid')->unique();                            // public route key (D15); int id stays internal
+    $table->unsignedInteger('visits_count')->default(0);       // denormalized visit total (D17)
     $table->foreignId('creator_id')->constrained('users')->cascadeOnDelete();
     $table->string('title');
     $table->text('description')->nullable();
@@ -129,6 +134,24 @@ Schema::create('votes', function (Blueprint $table) {
 });
 ```
 
+### `poll_visits` `[new]` (D17)
+
+Backend/admin visit statistics. One row per recorded access, deduped one-per-session-per-poll.
+
+```php
+Schema::create('poll_visits', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('poll_id')->constrained()->cascadeOnDelete();
+    $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete(); // null for logged-out guests
+    $table->string('ip_hash', 64)->nullable();             // salted hash only — never raw IP (R13)
+    $table->string('user_agent')->nullable();
+    $table->timestamp('visited_at')->index();
+    $table->index(['poll_id', 'visited_at']);
+});
+```
+
+> **Additive migrations.** `polls.uuid` (D15), `polls.visits_count` (D17), and `poll_visits` (D17) ship as new follow-on migrations (with a uuid backfill for existing rows), not by rewriting the original `create_polls` migration. The blocks above show the resulting target schema.
+
 ## Field mapping: prototype → schema
 
 | Prototype (`src/types.ts`, `src/data.ts`) | Schema |
@@ -147,9 +170,9 @@ Schema::create('votes', function (Blueprint $table) {
 
 - **`DefaultPollsSeeder`** ports `defaultPolls` from `src/data.ts` (Best Pizza Topping, Utility Belt, Pizza Tacos) including option colors and starting counts. Because the tally is derived (no count column), seeded counts require real `votes` rows — which require users.
   - **Avoid user-table pollution (risk M1):** generate the demo voters as a clearly-tagged batch (e.g. a `is_demo` boolean flag, or a dedicated email domain like `@demo.showdown`) so hundreds of seed users don't masquerade as real accounts and can be purged in one query. Seed this **only in local/staging**, never in production.
-- **`UserSeeder`** creates one of each role for local login (`admin@…`, `creator@…`, `invitee@…`) — credentials documented in the seeder, dev-only.
+- **`UserSeeder`** creates a single Super Admin (`superadmin@…` or the configured email) so the app is manageable from a fresh install — dev/bootstrap only. Other accounts are created via User Management.
 - Wire both into `DatabaseSeeder`.
 
 ## Factories `[new]`
 
-`UserFactory` (with `role` states: `->admin()`, `->creator()`, `->invitee()`), `PollFactory` (states `->active()`, `->ended()`, `->draft()`), `PollOptionFactory`, `VoteFactory`. Used by seeders and Pest tests.
+`UserFactory` (default role creator; states `->admin()`, `->creator()`, `->demo()`), `PollFactory` (states `->active()`, `->ended()`, `->draft()`), `PollOptionFactory`, `VoteFactory`. Used by seeders and Pest tests.

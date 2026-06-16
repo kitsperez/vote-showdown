@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class PollService
 {
@@ -32,10 +33,7 @@ class PollService
             ]);
 
             foreach (array_values($data['options']) as $i => $option) {
-                $imagePath = null;
-                if (isset($option['image']) && $option['image'] instanceof UploadedFile) {
-                    $imagePath = $option['image']->store('poll-options', 'public');
-                }
+                $imagePath = $this->storeOptionImage($option['image'] ?? null);
 
                 $poll->options()->create([
                     'label' => $option['label'],
@@ -94,8 +92,7 @@ class PollService
                         'label' => $option['label'],
                         'color_class' => $option['color_class'] ?? 'bg-[#00e3fd]',
                         'badge_color_class' => $option['badge_color_class'] ?? 'bg-[#00e3fd] text-[#1b1b1b]',
-                        'image_path' => isset($option['image']) && $option['image'] instanceof UploadedFile
-                            ? $option['image']->store('poll-options', 'public') : null,
+                        'image_path' => $this->storeOptionImage($option['image'] ?? null),
                         'icon' => $option['icon'] ?? null,
                         'position' => $i,
                     ]);
@@ -113,7 +110,7 @@ class PollService
                     $existing->label = $option['label'];
                     $existing->icon = $option['icon'] ?? $existing->icon;
                     if (isset($option['image']) && $option['image'] instanceof UploadedFile) {
-                        $existing->image_path = $option['image']->store('poll-options', 'public');
+                        $existing->image_path = $this->storeOptionImage($option['image']);
                     }
                     $existing->save();
                 }
@@ -215,6 +212,21 @@ class PollService
         }
 
         return now()->addSeconds($poll->duration_seconds ?? 120);
+    }
+
+    /**
+     * Persist an uploaded option image to the public disk under a random filename
+     * (no enumeration). Returns the stored path, or null when no file was provided.
+     */
+    private function storeOptionImage(?UploadedFile $file): ?string
+    {
+        if (! $file instanceof UploadedFile) {
+            return null;
+        }
+
+        $name = Str::uuid().'.'.$file->getClientOriginalExtension();
+
+        return $file->storeAs('poll-options', $name, 'public');
     }
 
     private function broadcastStatus(Poll $poll): void

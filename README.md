@@ -10,9 +10,10 @@ A high-energy, real-time polling app with a game-show ("showdown") feel: **carto
 
 ## Roles
 
-- **Creator** - builds, edits, launches, closes, and restarts their own polls.
-- **Admin / Showrunner** - moderates any poll, adds time, deletes polls, and oversees the live show.
-- **Invitee / Voter** - casts a vote through authenticated voting or the public guest voting flow; sees the live tally race.
+- **Admin** - manages users, moderates any poll, adds time, deletes polls, deletes votes, and oversees the live show.
+- **Poll Creator** - builds, edits, launches, closes, and restarts their own polls.
+
+Voters are **not** accounts: anyone votes through authenticated or public guest voting and is deduplicated by a `voter_key` (email or device), never a user row.
 
 ## Documentation (source of truth)
 

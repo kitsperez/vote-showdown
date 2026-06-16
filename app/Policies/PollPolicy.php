@@ -90,4 +90,12 @@ class PollPolicy
     {
         return $user->isAdmin();
     }
+
+    /**
+     * Moderation: delete a specific voter's votes on a poll (D18). Admin-only.
+     */
+    public function deleteVotes(User $user, Poll $poll): bool
+    {
+        return $user->isAdmin();
+    }
 }
