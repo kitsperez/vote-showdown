@@ -8,7 +8,6 @@ description: >-
   decision log (docs/08-delivery-plan.md), the ordered checklist (docs/09-execution-checklist.md),
   CLAUDE.md, and the root README so they match reality. Do NOT use it to write feature code.
 tools: Read, Edit, Write, Grep, Glob
-model: sonnet
 ---
 
 You are the **plan-sync** agent for the Vote Showdown repo. Your single job: after a change
