@@ -1,4 +1,4 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { Pencil, PlusCircle, RotateCcw, Square, Trash2, Trophy } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import ShowdownLayout from '@/layouts/showdown-layout';
@@ -7,7 +7,6 @@ import { QrShare } from '@/components/showdown/qr-share';
 import { formatCountdown, useCountdown } from '@/hooks/use-countdown';
 import { usePollChannel } from '@/hooks/use-poll-channel';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import type { SharedData } from '@/types';
 import type { Poll, PollStatus, TallyEntry, VoterEntry } from '@/types/models';
 
 interface ShowProps {
@@ -22,27 +21,19 @@ interface ShowProps {
 }
 
 export default function PollsShow({ poll, voters: initialVoters, canControl, canRestart, canClose, canEdit, canDelete, canModerateVotes }: ShowProps) {
-    const { auth } = usePage<SharedData>().props;
-
     const [tally, setTally] = useState<TallyEntry[]>(() => poll.options.map((o) => ({ poll_option_id: o.id, label: o.label, count: o.count })));
     const [voters, setVoters] = useState<VoterEntry[]>(initialVoters);
     const [status, setStatus] = useState<PollStatus>(poll.status);
     const [endsAt, setEndsAt] = useState<string | null>(poll.endsAt);
-    const [hasVoted, setHasVoted] = useState<boolean>(poll.hasVoted);
-    const [selected, setSelected] = useState<number | null>(null);
-    const [submitting, setSubmitting] = useState(false);
     const joinUrl = route('public-poll.show', poll.id);
-    const [password, setPassword] = useState('');
-    const locked = poll.requiresPassword && !poll.unlocked;
 
     // Re-sync when navigating between polls.
     useEffect(() => {
         setTally(poll.options.map((o) => ({ poll_option_id: o.id, label: o.label, count: o.count })));
         setStatus(poll.status);
         setEndsAt(poll.endsAt);
-        setHasVoted(poll.hasVoted);
         setVoters(initialVoters);
-    }, [poll.id, poll.status, poll.endsAt, poll.hasVoted, poll.options, initialVoters]);
+    }, [poll.id, poll.status, poll.endsAt, poll.options, initialVoters]);
 
     usePollChannel(poll.id, {
         onTally: (incoming) => setTally(incoming),
@@ -67,6 +58,15 @@ export default function PollsShow({ poll, voters: initialVoters, canControl, can
         return top.length === 1 ? top[0] : null;
     }, [tally]);
 
+    // Polling backstop for counts AND the voters feed if Reverb is unreachable or a
+    // broadcast is missed (no live +1, just correctness). Mirrors public-results so this
+    // read-only monitor stays in sync the same way the public projection does.
+    useEffect(() => {
+        if (!isActive) return;
+        const id = setInterval(() => router.reload({ only: ['poll', 'voters'] }), 6000);
+        return () => clearInterval(id);
+    }, [isActive]);
+
     useEffect(() => {
         if (status !== 'active' || remaining > 0) return;
         router.reload({ only: ['poll', 'voters'] });
@@ -74,27 +74,8 @@ export default function PollsShow({ poll, voters: initialVoters, canControl, can
         return () => clearInterval(id);
     }, [status, remaining, poll.id]);
 
-    const castVote = () => {
-        if (selected === null) return;
-        setSubmitting(true);
-        router.post(
-            route('polls.votes.store', poll.id),
-            { poll_option_id: selected },
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setHasVoted(true);
-                    setTally((prev) => prev.map((t) => (t.poll_option_id === selected ? { ...t, count: t.count + 1 } : t)));
-                },
-                onFinish: () => setSubmitting(false),
-            },
-        );
-    };
-
     const control = (action: 'close' | 'add-time' | 'restart', payload: Record<string, number> = {}) =>
         router.post(route(`polls.control.${action}`, poll.id), payload, { preserveScroll: true });
-
-    const showVoting = isActive && !hasVoted && !locked;
 
     return (
         <ShowdownLayout title={poll.title} subtitle={isActive ? 'Live showdown in progress' : status === 'ended' ? 'Final tally' : 'Draft'}>
@@ -126,86 +107,38 @@ export default function PollsShow({ poll, voters: initialVoters, canControl, can
                     <div className="flex flex-col gap-6 lg:col-span-8">
                         {poll.description && <p className="font-medium text-zinc-600 italic">"{poll.description}"</p>}
 
-                        {/* Password gate (D9) */}
-                        {isActive && locked && (
-                            <form
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    router.post(route('polls.unlock', poll.id), { password }, { preserveScroll: true });
-                                }}
-                                className="rounded-2xl border-[3px] border-[#1b1b1b] bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
-                            >
-                                <label className="mb-3 block font-mono text-xs font-bold uppercase">🔒 Password required to vote</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="Enter password"
-                                    className="mb-4 h-12 w-full rounded-xl border-[3px] border-[#1b1b1b] px-4 font-bold focus:border-[#e4006c] focus:outline-none"
-                                />
-                                <button className="cursor-pointer rounded-xl border-[3px] border-[#1b1b1b] bg-[#ffe170] px-6 py-3 font-mono text-sm font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5 active:translate-y-1 active:shadow-none">
-                                    🔓 Unlock
-                                </button>
-                            </form>
+                        {/* Read-only on the backend: voting happens on the public pages only. The tally
+                            here auto-updates live (Reverb + polling backstop), same as the public results. */}
+                        {isActive && (
+                            <div className="rounded-lg border-[2px] border-[#1b1b1b] bg-[#9cf0ff] p-4 text-center font-mono text-xs font-bold uppercase">
+                                👀 Live monitor — share the public link or QR for people to vote
+                            </div>
                         )}
 
-                        {/* Voting cards */}
-                        {showVoting && (
-                            <div className="flex flex-col gap-4">
-                                {poll.options.map((opt) => {
-                                    const active = selected === opt.id;
+                        {/* Tally bars (always shown) */}
+                        <div className="rounded-2xl border-[3px] border-[#1b1b1b] bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:p-8">
+                            <h2 className="mb-6 text-xl font-black uppercase">{status === 'ended' ? 'The Final Tally' : 'Live Tally'}</h2>
+                            <div className="flex flex-col gap-6">
+                                {tally.map((t) => {
+                                    const pct = Math.round((t.count / total) * 100);
+                                    const m = meta(t.poll_option_id);
                                     return (
-                                        <button
-                                            key={opt.id}
-                                            onClick={() => setSelected(opt.id)}
-                                            className={`flex items-center gap-5 rounded-xl border-[3px] border-[#1b1b1b] p-5 text-left shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-y-1 active:shadow-none ${
-                                                active ? opt.colorClass : 'bg-white hover:-translate-y-0.5 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'
-                                            }`}
-                                        >
-                                            <OptionBadge option={opt} />
-                                            <span className="text-lg font-extrabold">{opt.label}</span>
-                                        </button>
+                                        <div key={t.poll_option_id}>
+                                            <div className="mb-2 flex items-center justify-between font-mono text-xs font-bold uppercase">
+                                                <span className="flex items-center gap-2">
+                                                    {m && <OptionBadge option={m} size="sm" />}
+                                                    {t.label}
+                                                </span>
+                                                <span>{pct}% ({t.count})</span>
+                                            </div>
+                                            <div className="h-9 w-full overflow-hidden rounded-lg border-[3px] border-[#1b1b1b] bg-zinc-100">
+                                                <div className={`h-full border-r-[3px] border-[#1b1b1b] transition-all duration-700 ease-out ${m?.colorClass ?? 'bg-[#00e3fd]'}`} style={{ width: `${pct}%` }} />
+                                            </div>
+                                        </div>
                                     );
                                 })}
-                                <button
-                                    onClick={castVote}
-                                    disabled={selected === null || submitting}
-                                    className="mt-2 cursor-pointer rounded-xl border-[3px] border-[#1b1b1b] bg-[#e4006c] py-4 font-mono text-base font-black tracking-wider text-white uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none disabled:opacity-50"
-                                >
-                                    Cast my showdown vote! ⚡
-                                </button>
                             </div>
-                        )}
-
-                        {/* Tally bars */}
-                        {(!showVoting || hasVoted) && (
-                            <div className="rounded-2xl border-[3px] border-[#1b1b1b] bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:p-8">
-                                <h2 className="mb-6 text-xl font-black uppercase">{status === 'ended' ? 'The Final Tally' : 'Live Tally'}</h2>
-                                <div className="flex flex-col gap-6">
-                                    {tally.map((t) => {
-                                        const pct = Math.round((t.count / total) * 100);
-                                        const m = meta(t.poll_option_id);
-                                        return (
-                                            <div key={t.poll_option_id}>
-                                                <div className="mb-2 flex justify-between font-mono text-xs font-bold uppercase">
-                                                    <span>{t.label}</span>
-                                                    <span>{pct}% ({t.count})</span>
-                                                </div>
-                                                <div className="h-9 w-full overflow-hidden rounded-lg border-[3px] border-[#1b1b1b] bg-zinc-100">
-                                                    <div className={`h-full border-r-[3px] border-[#1b1b1b] transition-all duration-700 ease-out ${m?.colorClass ?? 'bg-[#00e3fd]'}`} style={{ width: `${pct}%` }} />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {hasVoted && isActive && (
-                            <div className="rounded-lg border-[2px] border-emerald-500 bg-emerald-100 p-4 text-center font-bold text-emerald-800">
-                                ✓ Your vote is locked in — watch the tally race live!
-                            </div>
-                        )}
+                        </div>
                     </div>
 
                     {/* Side column: QR share + voters + admin controls */}

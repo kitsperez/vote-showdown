@@ -40,7 +40,7 @@ Current active Inertia pages:
 | `pages/polls/index.tsx` | Poll list and poll entry points |
 | `pages/polls/create.tsx` | Create/launch poll using shared poll form |
 | `pages/polls/edit.tsx` | Edit poll setup using shared poll form |
-| `pages/polls/show.tsx` | Authenticated poll show/results/voting/control surface |
+| `pages/polls/show.tsx` | Authenticated poll show/results/control surface — read-only live monitor (no in-page voting; voting happens on the public pages) |
 | `pages/public-poll.tsx` | Public no-login guest voting page |
 | `pages/public-results.tsx` | Public spectator/results page with QR back to voting |
 | `pages/auth/*` | Starter auth flows, restyled for the brand |
