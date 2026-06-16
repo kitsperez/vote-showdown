@@ -48,7 +48,8 @@ Current policy baseline:
 
 - Create poll: any authenticated user.
 - View poll: any authenticated user who reaches it.
-- Update/launch: owning creator or admin.
+- Update/edit: owning creator or admin, and only while the poll is **not active** — i.e. a draft (pre-launch) or an ended/expired poll. A live poll cannot be edited.
+- Launch: owning creator or admin (runs on a draft; not subject to the "not active" edit gate).
 - Delete: admin only.
 - Close/restart: owning creator or admin.
 - Add time/control: admin only.

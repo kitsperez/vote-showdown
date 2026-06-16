@@ -10,7 +10,7 @@ export function CountdownBadge({ seconds, size = 'md' }: { seconds: number; size
             <span className="flex items-center gap-1 font-mono text-[10px] font-bold tracking-wider text-zinc-400 uppercase">
                 <Clock className="h-3 w-3" /> Ends in
             </span>
-            <span className={`font-mono font-black tabular-nums leading-none ${size === 'lg' ? 'text-4xl md:text-6xl' : 'text-2xl md:text-3xl'}`}>
+            <span className={`font-mono font-black tabular-nums leading-none ${size === 'lg' ? 'text-8xl md:text-6xl' : 'text-4xl md:text-6xl'}`}>
                 {formatCountdown(seconds)}
             </span>
         </div>

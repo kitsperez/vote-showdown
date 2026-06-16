@@ -38,11 +38,14 @@ interface PollFormProps {
     submitUrl: string;
     method?: 'post' | 'put';
     submitLabel: string;
-    /** When the poll already has votes, options can't be added/removed (only edited). */
-    lockOptionStructure?: boolean;
+    /**
+     * When the poll already has votes, existing options can't be removed (that would orphan
+     * their votes) — but new options may still be added.
+     */
+    protectExistingOptions?: boolean;
 }
 
-export function PollForm({ initial, submitUrl, method = 'post', submitLabel, lockOptionStructure = false }: PollFormProps) {
+export function PollForm({ initial, submitUrl, method = 'post', submitLabel, protectExistingOptions = false }: PollFormProps) {
     const { data, setData, post, processing, errors, transform } = useForm({
         ...(method === 'put' ? { _method: 'put' as const } : {}),
         ...initial,
@@ -50,9 +53,13 @@ export function PollForm({ initial, submitUrl, method = 'post', submitLabel, loc
 
     const patchOption = (i: number, patch: Partial<OptionInput>) =>
         setData('options', data.options.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
-    const addOption = () => !lockOptionStructure && data.options.length < 10 && setData('options', [...data.options, { label: '', icon: '', image: null }]);
-    const removeOption = (i: number) =>
-        !lockOptionStructure && data.options.length > 2 && setData('options', data.options.filter((_, idx) => idx !== i));
+    const addOption = () => data.options.length < 10 && setData('options', [...data.options, { label: '', icon: '', image: null }]);
+    // Existing (persisted) options stay put once votes exist; only freshly-added ones (no id) can be removed.
+    const canRemove = (opt: OptionInput) => data.options.length > 2 && (!protectExistingOptions || !opt.id);
+    const removeOption = (i: number) => {
+        if (!canRemove(data.options[i])) return;
+        setData('options', data.options.filter((_, idx) => idx !== i));
+    };
 
     transform((d) => ({
         ...d,
@@ -98,8 +105,8 @@ export function PollForm({ initial, submitUrl, method = 'post', submitLabel, loc
 
                 {/* Options */}
                 <label className="mt-6 mb-2 block font-mono text-xs font-bold uppercase">Options (2–10)</label>
-                {lockOptionStructure && (
-                    <p className="mb-2 font-mono text-[10px] text-amber-600 uppercase">Votes exist — you can edit labels/images but not add or remove options.</p>
+                {protectExistingOptions && (
+                    <p className="mb-2 font-mono text-[10px] text-amber-600 uppercase">Votes exist — you can edit and add options, but existing ones can't be removed.</p>
                 )}
                 <div className="flex flex-col gap-3">
                     {data.options.map((opt, i) => {
@@ -129,7 +136,7 @@ export function PollForm({ initial, submitUrl, method = 'post', submitLabel, loc
                                     className="min-w-0 flex-1 rounded-xl border-[3px] border-[#1b1b1b] px-4 py-2.5 font-bold focus:border-[#e4006c] focus:outline-none"
                                 />
                                
-                                {!lockOptionStructure && data.options.length > 2 && (
+                                {canRemove(opt) && (
                                     <button type="button" onClick={() => removeOption(i)} className="shrink-0 cursor-pointer rounded-lg border-[2px] border-[#1b1b1b] bg-red-100 p-2 text-red-700 transition-colors hover:bg-red-200" title="Remove option">
                                         <Trash2 className="h-4 w-4" />
                                     </button>
@@ -141,7 +148,7 @@ export function PollForm({ initial, submitUrl, method = 'post', submitLabel, loc
                     })}
                 </div>
                 {errors.options && <p className="mt-1 font-mono text-xs font-bold text-[#e4006c]">{errors.options}</p>}
-                {!lockOptionStructure && data.options.length < 10 && (
+                {data.options.length < 10 && (
                     <button type="button" onClick={addOption} className="mt-3 flex cursor-pointer items-center gap-2 font-mono text-xs font-bold text-[#006875] uppercase hover:underline">
                         <PlusCircle className="h-4 w-4" /> Add option
                     </button>

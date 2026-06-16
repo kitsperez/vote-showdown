@@ -47,16 +47,27 @@ class PollPolicy
     }
 
     /**
-     * The owning creator, or a super-admin, may edit/launch a poll's setup.
+     * The owning creator, or a super-admin, may edit a poll's setup — but only while it is
+     * NOT live. Editing is allowed for a draft (pre-launch) and for an ended/expired poll;
+     * a poll that is actively taking votes is locked to protect the round in progress.
      */
     public function update(User $user, Poll $poll): bool
     {
-        return $user->isAdmin() || $poll->creator_id === $user->id;
+        return $this->ownsOrAdmin($user, $poll) && ! $poll->isActive();
     }
 
+    /**
+     * Launching is a role decision only (it runs on a draft); it is not blocked by the
+     * "not while active" edit gate above.
+     */
     public function launch(User $user, Poll $poll): bool
     {
-        return $this->update($user, $poll);
+        return $this->ownsOrAdmin($user, $poll);
+    }
+
+    private function ownsOrAdmin(User $user, Poll $poll): bool
+    {
+        return $user->isAdmin() || $poll->creator_id === $user->id;
     }
 
     /**

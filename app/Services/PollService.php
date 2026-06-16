@@ -50,9 +50,10 @@ class PollService
     }
 
     /**
-     * Update a poll's setup. Poll meta is always editable; options can only be
-     * restructured (added/removed) before any votes exist — once voting has started, only
-     * label/icon/image of existing options change, to protect tally integrity.
+     * Update a poll's setup. Poll meta is always editable. Options can be freely
+     * restructured (added/removed/reordered) before any votes exist. Once voting has started,
+     * existing options are preserved and edited in place — they cannot be removed (that would
+     * orphan their votes) — but NEW options may still be added; they simply start at zero votes.
      *
      * @param  array<string, mixed>  $data
      */
@@ -98,21 +99,31 @@ class PollService
                     ]);
                 }
             } else {
-                // Votes exist — only edit existing options in place (no add/remove).
-                foreach ($options as $option) {
-                    if (empty($option['id'])) {
-                        continue;
+                // Votes exist — edit existing options in place and allow ADDING new ones.
+                // Existing options are never deleted here, so no vote is ever orphaned.
+                foreach ($options as $i => $option) {
+                    if (! empty($option['id'])) {
+                        $existing = $poll->options()->whereKey($option['id'])->first();
+                        if (! $existing) {
+                            continue;
+                        }
+                        $existing->label = $option['label'];
+                        $existing->icon = $option['icon'] ?? $existing->icon;
+                        $existing->position = $i;
+                        if (isset($option['image']) && $option['image'] instanceof UploadedFile) {
+                            $existing->image_path = $this->storeOptionImage($option['image']);
+                        }
+                        $existing->save();
+                    } else {
+                        $poll->options()->create([
+                            'label' => $option['label'],
+                            'color_class' => $option['color_class'] ?? 'bg-[#00e3fd]',
+                            'badge_color_class' => $option['badge_color_class'] ?? 'bg-[#00e3fd] text-[#1b1b1b]',
+                            'image_path' => $this->storeOptionImage($option['image'] ?? null),
+                            'icon' => $option['icon'] ?? null,
+                            'position' => $i,
+                        ]);
                     }
-                    $existing = $poll->options()->whereKey($option['id'])->first();
-                    if (! $existing) {
-                        continue;
-                    }
-                    $existing->label = $option['label'];
-                    $existing->icon = $option['icon'] ?? $existing->icon;
-                    if (isset($option['image']) && $option['image'] instanceof UploadedFile) {
-                        $existing->image_path = $this->storeOptionImage($option['image']);
-                    }
-                    $existing->save();
                 }
             }
 

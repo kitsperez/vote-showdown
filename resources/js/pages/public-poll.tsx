@@ -7,7 +7,7 @@ import { QrShare } from '@/components/showdown/qr-share';
 import { useCountdown } from '@/hooks/use-countdown';
 import { usePublicPollChannel } from '@/hooks/use-public-poll-channel';
 import GuestLayout from '@/layouts/guest-layout';
-import type { Poll, VoterEntry } from '@/types/models';
+import type { Poll, TallyEntry, VoterEntry } from '@/types/models';
 
 interface PublicPollProps {
     poll: Poll;
@@ -17,9 +17,10 @@ interface PublicPollProps {
 
 /**
  * Public guest page — same design as the authed /polls/{id} page, minus the sidebar.
- * Guests vote by email (polling for liveness; no private Echo channel).
+ * Guests vote by email. Live via the poll's PUBLIC channel (with a polling backstop), so
+ * the tally and voters stay current even after the poll ends and a winner is shown.
  */
-export default function PublicPoll({ poll, voters, hasVoted: initialVoted }: PublicPollProps) {
+export default function PublicPoll({ poll, voters: initialVoters, hasVoted: initialVoted }: PublicPollProps) {
     const [selected, setSelected] = useState<number | null>(null);
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
@@ -28,14 +29,22 @@ export default function PublicPoll({ poll, voters, hasVoted: initialVoted }: Pub
     const [busy, setBusy] = useState(false);
     const [status, setStatus] = useState(poll.status);
     const [endsAt, setEndsAt] = useState<string | null>(poll.endsAt);
+    const [tally, setTally] = useState<TallyEntry[]>(() => poll.options.map((o) => ({ poll_option_id: o.id, label: o.label, count: o.count })));
+    const [voters, setVoters] = useState<VoterEntry[]>(initialVoters);
 
+    // Re-sync from server props (initial load + every polling/reload backstop). Tally and
+    // voters are rebuilt too so the final state survives the reload that fires on settle.
     useEffect(() => {
         setStatus(poll.status);
         setEndsAt(poll.endsAt);
         setHasVoted(initialVoted);
-    }, [poll.id, poll.status, poll.endsAt, initialVoted]);
+        setTally(poll.options.map((o) => ({ poll_option_id: o.id, label: o.label, count: o.count })));
+        setVoters(initialVoters);
+    }, [poll, initialVoted, initialVoters]);
 
     usePublicPollChannel(poll.id, {
+        onTally: (incoming) => setTally(incoming),
+        onTicker: (voter) => setVoters((prev) => [{ id: Date.now(), ...voter }, ...prev].slice(0, 20)),
         onStatus: (payload) => {
             setStatus(payload.status);
             setEndsAt(payload.endsAt);
@@ -46,14 +55,15 @@ export default function PublicPoll({ poll, voters, hasVoted: initialVoted }: Pub
     const remaining = useCountdown(endsAt);
     const isActive = status === 'active' && remaining > 0;
     const locked = poll.requiresPassword && !poll.unlocked;
-    const total = useMemo(() => poll.options.reduce((s, o) => s + o.count, 0) || 1, [poll.options]);
+    const total = useMemo(() => tally.reduce((s, t) => s + t.count, 0) || 1, [tally]);
     const winner = useMemo(() => {
-        if (poll.options.length === 0) return null;
-        const max = Math.max(...poll.options.map((o) => o.count));
+        if (tally.length === 0) return null;
+        const max = Math.max(...tally.map((t) => t.count));
         if (max <= 0) return null;
-        const top = poll.options.filter((o) => o.count === max);
+        const top = tally.filter((t) => t.count === max);
         return top.length === 1 ? top[0] : null;
-    }, [poll.options]);
+    }, [tally]);
+    const meta = (id: number) => poll.options.find((o) => o.id === id);
     const voteUrl = route('public-poll.show', poll.id);
 
     useEffect(() => {
@@ -181,27 +191,29 @@ export default function PublicPoll({ poll, voters, hasVoted: initialVoted }: Pub
                             </form>
                         )}
 
-                        {/* Tally */}
-                        {(!showVoting || hasVoted) && !locked && (
+                        {/* Tally — shown to voters mid-round and to everyone once ended (the
+                            winner banner already reveals the result, so don't hide the bars). */}
+                        {(status === 'ended' || ((!showVoting || hasVoted) && !locked)) && (
                             <div className="rounded-2xl border-[3px] border-[#1b1b1b] bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:p-8">
                                 {hasVoted && isActive && (
                                     <div className="mb-6 rounded-lg border-[2px] border-emerald-500 bg-emerald-100 p-3 text-center font-bold text-emerald-800">✓ Your vote is locked in — watch the race!</div>
                                 )}
-                                <h2 className="mb-6 text-xl font-black uppercase">{poll.status === 'ended' ? 'The Final Tally' : 'Live Tally'}</h2>
+                                <h2 className="mb-6 text-xl font-black uppercase">{status === 'ended' ? 'The Final Tally' : 'Live Tally'}</h2>
                                 <div className="flex flex-col gap-6">
-                                    {poll.options.map((opt) => {
-                                        const pct = Math.round((opt.count / total) * 100);
+                                    {tally.map((t) => {
+                                        const pct = Math.round((t.count / total) * 100);
+                                        const m = meta(t.poll_option_id);
                                         return (
-                                            <div key={opt.id}>
+                                            <div key={t.poll_option_id}>
                                                 <div className="mb-2 flex items-center justify-between font-mono text-xs font-bold uppercase">
                                                     <span className="flex items-center gap-2">
-                                                        <OptionBadge option={opt} size="sm" />
-                                                        {opt.label}
+                                                        {m && <OptionBadge option={m} size="sm" />}
+                                                        {t.label}
                                                     </span>
-                                                    <span>{pct}% ({opt.count})</span>
+                                                    <span>{pct}% ({t.count})</span>
                                                 </div>
                                                 <div className="h-9 w-full overflow-hidden rounded-lg border-[3px] border-[#1b1b1b] bg-zinc-100">
-                                                    <div className={`h-full border-r-[3px] border-[#1b1b1b] transition-all duration-700 ease-out ${opt.colorClass}`} style={{ width: `${pct}%` }} />
+                                                    <div className={`h-full border-r-[3px] border-[#1b1b1b] transition-all duration-700 ease-out ${m?.colorClass ?? 'bg-[#00e3fd]'}`} style={{ width: `${pct}%` }} />
                                                 </div>
                                             </div>
                                         );

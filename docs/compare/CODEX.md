@@ -138,7 +138,8 @@ admin User Management (D16).
 |---|---|
 | 2–10 options per poll | `StorePollRequest`/`UpdatePollRequest` |
 | One active poll per creator (on launch) | `PollService` (D1) |
-| Edit/launch: owning creator or admin | `PollPolicy` |
+| Edit: owning creator or admin, only while **not active** (draft or ended) | `PollPolicy@update` |
+| Launch: owning creator or admin | `PollPolicy@launch` |
 | Delete: admin only | `PollPolicy` |
 | Close/restart: owning creator or admin | `PollPolicy` |
 | Add-time: admin only | route `role:admin` + policy |

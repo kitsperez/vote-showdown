@@ -44,7 +44,8 @@
 - **TC-POLL-05** Empty title → 422.
 - **TC-POLL-06** Launch sets `status=active`, `starts_at`, and resolves `ends_at` (duration or deadline).
 - **TC-POLL-07** Launching a second poll enforces one-active-poll-per-creator (D1).
-- **TC-POLL-08** Edit by owner/admin updates fields; options edit-in-place when votes exist.
+- **TC-POLL-08** Edit by owner/admin updates fields. When votes exist, existing options are edited
+  in place and **new options can be added**, but existing (voted) options cannot be removed.
 - **TC-POLL-09** Delete (admin) cascades options + votes.
 - **TC-UUID-01** Public URLs, QR/share, and channel names use the UUID; the integer id never appears
   in props or URLs (D15).
